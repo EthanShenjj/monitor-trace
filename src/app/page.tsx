@@ -1,66 +1,50 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+"use client";
 
-export default function Home() {
+import { useApp } from '@/context/AppContext';
+import { aggregateMetrics } from '@/lib/mockData';
+
+export default function Dashboard() {
+  const { t } = useApp();
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{t('dashboard')}</h1>
+          <p style={{ color: 'var(--text-secondary)' }}>{t('overview_desc')}</p>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <button className="btn btn-primary">{t('download_report')}</button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }}>
+        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+          <h3 style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('total_requests')}</h3>
+          <p style={{ fontSize: '2.5rem', fontWeight: 700 }} className="text-gradient">{aggregateMetrics.totalRequests.toLocaleString()}</p>
+          <p style={{ fontSize: '0.75rem', color: 'var(--status-success)', marginTop: '0.5rem' }}>+12%</p>
         </div>
-      </main>
+        
+        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+          <h3 style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('avg_latency')}</h3>
+          <p style={{ fontSize: '2.5rem', fontWeight: 700 }} className="text-gradient">{(aggregateMetrics.averageLatencyMs / 1000).toFixed(2)}s</p>
+          <p style={{ fontSize: '0.75rem', color: 'var(--status-success)', marginTop: '0.5rem' }}>-5%</p>
+        </div>
+        
+        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+          <h3 style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('total_tokens')}</h3>
+          <p style={{ fontSize: '2.5rem', fontWeight: 700 }} className="text-gradient">{(aggregateMetrics.totalTokens / 1000000).toFixed(1)}M</p>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>Across all models</p>
+        </div>
+        
+        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+          <h3 style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('estimated_cost')}</h3>
+          <p style={{ fontSize: '2.5rem', fontWeight: 700 }} className="text-gradient">${aggregateMetrics.totalCostUsd.toFixed(2)}</p>
+          <p style={{ fontSize: '0.75rem', color: 'var(--status-error)', marginTop: '0.5rem' }}>+8%</p>
+        </div>
+      </div>
+
+      <div className="glass-panel" style={{ padding: '2rem', minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: 'var(--text-muted)' }}>{t('activity_chart_placeholder')}</p>
+      </div>
     </div>
   );
 }
