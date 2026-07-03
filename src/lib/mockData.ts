@@ -1,3 +1,5 @@
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
 export interface Span {
   id: string;
   name: string;
@@ -11,8 +13,8 @@ export interface Span {
     completion: number;
     total: number;
   };
-  input: any;
-  output: any;
+  input: JsonValue;
+  output: JsonValue;
   children?: Span[];
 }
 

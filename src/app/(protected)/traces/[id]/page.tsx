@@ -49,7 +49,7 @@ function SpanNode({ span, depth = 0 }: { span: Span; depth?: number }) {
 }
 
 interface PageProps {
-  params: React.Usable<{ id: string }>;
+  params: Promise<{ id: string }>;
 }
 
 export default function TraceDetails({ params }: PageProps) {

@@ -1,9 +1,17 @@
 "use client";
 
 import { useApp } from '@/context/AppContext';
+import { useRouter } from 'next/navigation';
 
 export default function TopNav() {
   const { theme, toggleTheme, locale, toggleLocale, t } = useApp();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.replace('/login');
+    router.refresh();
+  };
 
   return (
     <header style={{ height: '70px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2rem' }}>
@@ -36,6 +44,7 @@ export default function TopNav() {
         </button>
 
         <button className="btn btn-outline" style={{ padding: '0.5rem 1rem' }}>{t('docs')}</button>
+        <button className="btn btn-outline" onClick={handleLogout} style={{ padding: '0.5rem 1rem' }}>{t('logout')}</button>
         <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>U</div>
       </div>
     </header>
