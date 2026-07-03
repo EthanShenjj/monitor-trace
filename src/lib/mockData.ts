@@ -140,3 +140,21 @@ export const aggregateMetrics = {
   totalCostUsd: 145.20,
   errorRate: 0.024
 };
+
+// Last 14 days of daily stats for the chart
+export const chartData = [
+  { date: '05/10', requests: 820,  tokens: 680000,  cost: 8.2,  errors: 12 },
+  { date: '05/11', requests: 950,  tokens: 820000,  cost: 9.5,  errors: 8  },
+  { date: '05/12', requests: 1100, tokens: 930000,  cost: 11.0, errors: 15 },
+  { date: '05/13', requests: 870,  tokens: 740000,  cost: 8.7,  errors: 6  },
+  { date: '05/14', requests: 1250, tokens: 1020000, cost: 12.5, errors: 20 },
+  { date: '05/15', requests: 980,  tokens: 850000,  cost: 9.8,  errors: 9  },
+  { date: '05/16', requests: 1380, tokens: 1150000, cost: 13.8, errors: 18 },
+  { date: '05/17', requests: 760,  tokens: 640000,  cost: 7.6,  errors: 4  },
+  { date: '05/18', requests: 1100, tokens: 910000,  cost: 11.0, errors: 11 },
+  { date: '05/19', requests: 1420, tokens: 1200000, cost: 14.2, errors: 22 },
+  { date: '05/20', requests: 890,  tokens: 750000,  cost: 8.9,  errors: 7  },
+  { date: '05/21', requests: 1560, tokens: 1320000, cost: 15.6, errors: 25 },
+  { date: '05/22', requests: 1230, tokens: 1050000, cost: 12.3, errors: 14 },
+  { date: '05/23', requests: 1480, tokens: 1280000, cost: 14.8, errors: 19 },
+];
