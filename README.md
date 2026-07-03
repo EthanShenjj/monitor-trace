@@ -18,13 +18,28 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Amplitude Web Experiment
 
-To compare login/register page variants, copy `.env.example` to `.env.local` and set:
+To compare login/register page variants, copy `.env.example` to `.env.local` and set the Amplitude Analytics API key and Experiment deployment key:
+
+```bash
+AMPLITUDE_API_KEY="..."
+NEXT_PUBLIC_AMPLITUDE_EXPERIMENT_DEPLOYMENT_KEY="client-..."
+```
+
+Auth analytics events are sent through `/api/analytics/amplitude`, which forwards them to Amplitude HTTP API v2 from the server. Keep `AMPLITUDE_API_KEY` server-only; it should not use the `NEXT_PUBLIC_` prefix. If your project uses Amplitude EU data residency, set:
+
+```bash
+AMPLITUDE_HTTP_API_ENDPOINT="https://api.eu.amplitude.com/2/httpapi"
+```
+
+The auth page uses the Amplitude Experiment JavaScript SDK to fetch the `test` experiment variant and falls back to `control` if the SDK cannot load a variant. If you also use Amplitude Web Experiment's visual editor, you can optionally set:
 
 ```bash
 NEXT_PUBLIC_AMPLITUDE_WEB_EXPERIMENT_SCRIPT_URL="https://..."
 ```
 
-Use the Web Experiment script URL from your Amplitude project. The app records these events for conversion analysis:
+### Tracking Plan
+
+The app records these events for conversion analysis:
 
 - `Auth Page Viewed`
 - `Auth Form Submitted`
@@ -33,7 +48,41 @@ Use the Web Experiment script URL from your Amplitude project. The app records t
 - `User Registered`
 - `User Logged In`
 
-Recommended conversion metric: `Auth Conversion` filtered by `auth_mode = register` for registration conversion, or `auth_mode = login` for login conversion. The auth UI also exposes stable selectors such as `[data-auth-form="register"]` and `[data-auth-primary-action="login"]` for Amplitude's visual editor.
+Core event properties:
+
+- `experiment_surface`: always `auth`
+- `auth_mode`: `login` or `register`
+- `page_path`: current auth route
+- `experiment_key`: currently `test`
+- `experiment_variant`: `control` or `treatment`
+- `conversion_type`: present on `Auth Conversion`
+- `status_code` and `error_message`: present on `Auth Form Failed`
+
+Recommended experiment metrics:
+
+- Primary metric: `User Registered`, counted as unique users.
+- Alternative primary metric: `Auth Conversion` filtered by `auth_mode = register`.
+- Secondary metrics: `Auth Form Submitted`, `Auth Form Failed`, and `User Logged In`.
+
+The auth UI also exposes stable selectors such as `[data-auth-form="register"]` and `[data-auth-primary-action="login"]` for Amplitude's visual editor.
+
+The built-in copy experiment uses Amplitude experiment key `test` with these variants:
+
+- `control`: current direct login/register copy
+- `treatment`: value-led copy focused on AI trace visibility and issue diagnosis
+
+For local checks, open `/login?auth_copy_variant=treatment` or `/register?auth_copy_variant=treatment`; the query parameter forces the preview variant. In Amplitude Web Experiment, set the treatment variant with this custom snippet if you need a visual-editor fallback:
+
+```js
+document.documentElement.dataset.authCopyVariant = "treatment";
+window.dispatchEvent(
+  new CustomEvent("auth-copy-experiment:variant", {
+    detail: { variant: "treatment" },
+  })
+);
+```
+
+The app records `Auth Copy Experiment Exposed` and includes `experiment_key` and `experiment_variant` on auth events for analysis.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
