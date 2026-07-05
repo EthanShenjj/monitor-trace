@@ -25,6 +25,7 @@ export default function Dashboard() {
   const [paymentAmount, setPaymentAmount] = useState('29.00');
   const [amountEntryMethod, setAmountEntryMethod] = useState<'manual' | 'random'>('manual');
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
+  const [showPaymentSuccessTooltip, setShowPaymentSuccessTooltip] = useState(false);
 
   useEffect(() => {
     trackMixpanelEvent('dashboard_viewed', {
@@ -34,6 +35,18 @@ export default function Dashboard() {
       error_rate: aggregateMetrics.errorRate,
     });
   }, []);
+
+  useEffect(() => {
+    if (!showPaymentSuccessTooltip) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setShowPaymentSuccessTooltip(false);
+    }, 2400);
+
+    return () => window.clearTimeout(timeout);
+  }, [showPaymentSuccessTooltip]);
 
   const normalizedPaymentAmount = useMemo(() => {
     const parsedAmount = Number(paymentAmount);
@@ -51,6 +64,7 @@ export default function Dashboard() {
     setPaymentAmount(nextAmount);
     setAmountEntryMethod('random');
     setPaymentStatus(null);
+    setShowPaymentSuccessTooltip(false);
   };
 
   const handlePaymentSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -69,11 +83,8 @@ export default function Dashboard() {
 
     trackAmplitudeEvent('Payment Simulated', paymentProperties);
     trackMixpanelEvent('payment_simulated', paymentProperties);
-    setPaymentStatus(
-      locale === 'zh'
-        ? `已记录 $${normalizedPaymentAmount.toFixed(2)} 的模拟付费`
-        : `Recorded simulated payment of $${normalizedPaymentAmount.toFixed(2)}`
-    );
+    setPaymentStatus(null);
+    setShowPaymentSuccessTooltip(true);
   };
 
   const metricCards = [
@@ -153,6 +164,7 @@ export default function Dashboard() {
         className="glass-panel"
         onSubmit={handlePaymentSubmit}
         style={{
+          position: 'relative',
           padding: '1.5rem',
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
@@ -185,11 +197,31 @@ export default function Dashboard() {
         <button type="submit" className="btn btn-primary" disabled={!canSubmitPayment}>
           {locale === 'zh' ? '付费' : 'Pay'}
         </button>
+        {showPaymentSuccessTooltip ? (
+          <div
+            role="status"
+            style={{
+              position: 'absolute',
+              right: '1.5rem',
+              top: '-0.75rem',
+              padding: '0.65rem 0.85rem',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--status-success)',
+              color: '#fff',
+              boxShadow: '0 10px 28px rgba(16, 185, 129, 0.24)',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              zIndex: 2,
+            }}
+          >
+            {locale === 'zh' ? '付费成功' : 'Payment successful'}
+          </div>
+        ) : null}
         <p
           style={{
             gridColumn: '1 / -1',
             minHeight: '1.25rem',
-            color: paymentStatus?.includes('请输入') || paymentStatus?.includes('Enter') ? 'var(--status-error)' : 'var(--text-secondary)',
+            color: 'var(--status-error)',
             fontSize: '0.875rem',
           }}
           aria-live="polite"
