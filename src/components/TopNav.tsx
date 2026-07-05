@@ -1,23 +1,53 @@
 "use client";
 
 import { useApp } from '@/context/AppContext';
+import { identifyAmplitudeUser } from '@/lib/amplitude';
+import { identifyMixpanelUser, resetMixpanel, trackMixpanelEvent } from '@/lib/mixpanel';
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
-export default function TopNav() {
+type TopNavUser = {
+  id: string;
+  name?: string;
+  email?: string;
+  createdAt?: string;
+};
+
+export default function TopNav({ user }: { user: TopNavUser }) {
   const { theme, toggleTheme, locale, toggleLocale, t } = useApp();
   const router = useRouter();
 
+  useEffect(() => {
+    identifyAmplitudeUser(user.id);
+    identifyMixpanelUser(user.id, user);
+  }, [user]);
+
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.replace('/login');
-    router.refresh();
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      trackMixpanelEvent('log_out_completed', {
+        platform: 'web',
+      });
+    } finally {
+      resetMixpanel();
+      router.replace('/login');
+      router.refresh();
+    }
   };
 
   return (
     <header style={{ height: '70px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2rem' }}>
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
         <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{t('project')}:</span>
-        <select style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: 'var(--radius-sm)', outline: 'none' }}>
+        <select
+          onChange={(event) => {
+            trackMixpanelEvent('project_selected', {
+              project_name: event.target.value,
+              platform: 'web',
+            });
+          }}
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: 'var(--radius-sm)', outline: 'none' }}
+        >
           <option>Customer Support Agent</option>
           <option>Code Review Bot</option>
           <option>Data extraction</option>
@@ -43,7 +73,18 @@ export default function TopNav() {
           {theme === 'light' ? '🌙' : '☀️'}
         </button>
 
-        <button className="btn btn-outline" style={{ padding: '0.5rem 1rem' }}>{t('docs')}</button>
+        <button
+          className="btn btn-outline"
+          onClick={() => {
+            trackMixpanelEvent('docs_clicked', {
+              source: 'top_nav',
+              platform: 'web',
+            });
+          }}
+          style={{ padding: '0.5rem 1rem' }}
+        >
+          {t('docs')}
+        </button>
         <button className="btn btn-outline" onClick={handleLogout} style={{ padding: '0.5rem 1rem' }}>{t('logout')}</button>
         <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>U</div>
       </div>

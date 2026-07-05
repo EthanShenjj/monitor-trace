@@ -47,6 +47,7 @@ The app records these events for conversion analysis:
 - `Auth Form Failed`
 - `User Registered`
 - `User Logged In`
+- `Payment Simulated`
 
 Core event properties:
 
@@ -57,6 +58,7 @@ Core event properties:
 - `experiment_variant`: `control` or `treatment`
 - `conversion_type`: present on `Auth Conversion`
 - `status_code` and `error_message`: present on `Auth Form Failed`
+- `payment_amount`, `currency`, `payment_method`, `source`, and `amount_entry_method`: present on `Payment Simulated`
 
 Recommended experiment metrics:
 
@@ -83,6 +85,54 @@ window.dispatchEvent(
 ```
 
 The app records `Auth Copy Experiment Exposed` and includes `experiment_key` and `experiment_variant` on auth events for analysis.
+
+### Synthetic AB Experiment Events
+
+To preview 100 synthetic register-page users without sending anything to Amplitude:
+
+```bash
+npm run simulate:auth-ab -- --summary-only
+```
+
+To upload the synthetic exposure, page-view, submit, and registration conversion events to Amplitude, set `AMPLITUDE_API_KEY` in `.env.local`, then run:
+
+```bash
+npm run simulate:auth-ab -- --send --summary-only
+```
+
+The synthetic events include `is_synthetic: true`, `experiment_key: test`, `experiment_variant`, `auth_mode: register`, and stable `user_id` / `device_id` values such as `sim-user-001` and `sim-device-001`. They also include matching Amplitude `user_properties` such as `synthetic_user`, `synthetic_simulation_id`, `auth_copy_experiment_key`, and `auth_copy_experiment_variant`.
+
+The simulator also sends Amplitude top-level identity, geo, and device fields. Defaults include `city: San Francisco`, `country: United States`, `region: California`, `device_brand: Apple`, `device_model: Mac`, `language: en-US`, `os_name: macOS`, and `platform: Web`. Override them when needed:
+
+```bash
+npm run simulate:auth-ab -- --send --country "China" --city "Shanghai" --region "Shanghai" --ip "8.8.8.8"
+```
+
+For easier chart grouping, the same synthetic identity and geo fields are mirrored into event properties and user properties, including `synthetic_user_id`, `synthetic_device_id`, `city`, `country`, and `region`.
+
+## Mixpanel Quick Start
+
+This app also sends product analytics to Mixpanel through the browser SDK. Set the project token in `.env.local` or the deployment environment:
+
+```bash
+NEXT_PUBLIC_MIXPANEL_TOKEN="715809b4480606c6237f5ffde5c246b4"
+```
+
+Mixpanel is initialized once in `src/lib/mixpanel.ts`. Feature code should use the shared helpers from that file instead of importing `mixpanel-browser` directly.
+
+Current Mixpanel tracking plan:
+
+- Auth funnel: `auth_page_viewed`, `auth_form_submitted`, `auth_form_failed`, `auth_mode_switched`, `sign_up_completed`, `log_in_completed`, `log_out_completed`.
+- Dashboard usage: `dashboard_viewed`, `report_download_requested`, `activity_metric_selected`.
+- Payment simulation: `payment_simulated`.
+- Trace usage: `trace_list_opened`, `trace_list_viewed`, `trace_searched`, `trace_filter_clicked`, `trace_opened`, `trace_viewed`.
+- Global navigation and preferences: `project_selected`, `theme_changed`, `language_changed`, `docs_clicked`.
+
+Identity rules:
+
+- `identify` runs after successful login/signup and when a logged-in protected session opens.
+- `reset` runs on logout.
+- The Mixpanel distinct ID is the internal user ID, not the user's email.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

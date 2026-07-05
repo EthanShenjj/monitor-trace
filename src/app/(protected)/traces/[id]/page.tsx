@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
+import { trackMixpanelEvent } from '@/lib/mixpanel';
 import { mockTraces, Span } from '@/lib/mockData';
 
 function SpanNode({ span, depth = 0 }: { span: Span; depth?: number }) {
@@ -56,6 +57,19 @@ export default function TraceDetails({ params }: PageProps) {
   const { id } = React.use(params);
   const { t } = useApp();
   const trace = mockTraces.find(t => t.id === id) || mockTraces[0];
+
+  React.useEffect(() => {
+    trackMixpanelEvent("trace_viewed", {
+      trace_id: trace.id,
+      project_name: trace.projectName,
+      model: trace.model,
+      trace_status: trace.status,
+      total_tokens: trace.totalTokens,
+      latency_ms: trace.latencyMs,
+      cost_usd: trace.cost,
+      span_count: trace.spans.length,
+    });
+  }, [trace]);
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>

@@ -1,11 +1,45 @@
 "use client";
 
 import Link from 'next/link';
+import { ChangeEvent, KeyboardEvent, useEffect, useState } from 'react';
 import { useApp } from '@/context/AppContext';
+import { trackMixpanelEvent } from '@/lib/mixpanel';
 import { mockTraces } from '@/lib/mockData';
 
 export default function TracesList() {
   const { t } = useApp();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    trackMixpanelEvent('trace_list_viewed', {
+      platform: 'web',
+      trace_count: mockTraces.length,
+    });
+  }, []);
+
+  function trackTraceSearch(query: string, trigger: 'enter' | 'blur') {
+    const cleanQuery = query.trim();
+
+    if (!cleanQuery) {
+      return;
+    }
+
+    trackMixpanelEvent('trace_searched', {
+      search_query_length: cleanQuery.length,
+      trigger,
+      platform: 'web',
+    });
+  }
+
+  function handleSearchChange(event: ChangeEvent<HTMLInputElement>) {
+    setSearchQuery(event.target.value);
+  }
+
+  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      trackTraceSearch(searchQuery, 'enter');
+    }
+  }
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -19,6 +53,10 @@ export default function TracesList() {
           <input 
             type="text" 
             placeholder={t('search_placeholder')} 
+            value={searchQuery}
+            onChange={handleSearchChange}
+            onKeyDown={handleSearchKeyDown}
+            onBlur={() => trackTraceSearch(searchQuery, 'blur')}
             style={{ 
               padding: '0.5rem 1rem', 
               borderRadius: 'var(--radius-sm)', 
@@ -29,7 +67,17 @@ export default function TracesList() {
               width: '250px'
             }} 
           />
-          <button className="btn btn-outline">{t('filter')}</button>
+          <button
+            className="btn btn-outline"
+            onClick={() => {
+              trackMixpanelEvent('trace_filter_clicked', {
+                source: 'trace_list',
+                platform: 'web',
+              });
+            }}
+          >
+            {t('filter')}
+          </button>
         </div>
       </div>
 
@@ -56,7 +104,21 @@ export default function TracesList() {
                   </span>
                 </td>
                 <td>
-                  <Link href={`/traces/${trace.id}`} className="accent-gradient" style={{ fontWeight: 500 }}>
+                  <Link
+                    href={`/traces/${trace.id}`}
+                    className="accent-gradient"
+                    onClick={() => {
+                      trackMixpanelEvent('trace_opened', {
+                        source: 'trace_list',
+                        trace_id: trace.id,
+                        project_name: trace.projectName,
+                        model: trace.model,
+                        trace_status: trace.status,
+                        platform: 'web',
+                      });
+                    }}
+                    style={{ fontWeight: 500 }}
+                  >
                     {trace.id}
                   </Link>
                 </td>

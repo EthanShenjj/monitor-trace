@@ -2,6 +2,7 @@
 
 import { chartData } from '@/lib/mockData';
 import { useApp } from '@/context/AppContext';
+import { trackMixpanelEvent } from '@/lib/mixpanel';
 import { useState } from 'react';
 
 type Metric = 'requests' | 'tokens' | 'cost' | 'errors';
@@ -16,6 +17,15 @@ const METRICS: { key: Metric; label: string; labelZh: string; color: string }[] 
 export default function ActivityChart() {
   const { locale } = useApp();
   const [activeMetric, setActiveMetric] = useState<Metric>('requests');
+
+  function handleMetricSelect(nextMetric: Metric) {
+    setActiveMetric(nextMetric);
+    trackMixpanelEvent('activity_metric_selected', {
+      metric: nextMetric,
+      previous_metric: activeMetric,
+      platform: 'web',
+    });
+  }
 
   const metric = METRICS.find(m => m.key === activeMetric)!;
   const values = chartData.map(d => d[activeMetric] as number);
@@ -58,7 +68,7 @@ export default function ActivityChart() {
           {METRICS.map(m => (
             <button
               key={m.key}
-              onClick={() => setActiveMetric(m.key)}
+              onClick={() => handleMetricSelect(m.key)}
               style={{
                 padding: '0.35rem 0.85rem',
                 borderRadius: 'var(--radius-full)',

@@ -7,11 +7,13 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "simulate:auth-ab": "node scripts/simulate-auth-copy-ab-test.mjs"
   },
   "dependencies": {
     "@amplitude/experiment-js-client": "^1.21.2",
     "better-sqlite3": "^12.11.1",
+    "mixpanel-browser": "^2.80.0",
     "next": "16.2.6",
     "react": "19.2.4",
     "react-dom": "19.2.4"

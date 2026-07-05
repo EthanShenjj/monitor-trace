@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { trackMixpanelEvent } from '@/lib/mixpanel';
 
 type Theme = 'light' | 'dark';
 type Locale = 'zh' | 'en';
@@ -98,11 +99,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
+    setTheme(prev => {
+      const nextTheme = prev === 'light' ? 'dark' : 'light';
+      trackMixpanelEvent('theme_changed', {
+        previous_theme: prev,
+        new_theme: nextTheme,
+        platform: 'web',
+      });
+      return nextTheme;
+    });
   };
 
   const toggleLocale = () => {
-    setLocale(prev => (prev === 'zh' ? 'en' : 'zh'));
+    setLocale(prev => {
+      const nextLocale = prev === 'zh' ? 'en' : 'zh';
+      trackMixpanelEvent('language_changed', {
+        previous_language: prev,
+        new_language: nextLocale,
+        platform: 'web',
+      });
+      return nextLocale;
+    });
   };
 
   const t = (key: keyof typeof translations['en']): string => {

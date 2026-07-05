@@ -94,6 +94,29 @@ function sendToAnalyticsRoute(eventName: string, eventProperties: Record<string,
   return true;
 }
 
+function cleanEventProperties(properties: Record<string, unknown> = {}) {
+  return Object.fromEntries(
+    Object.entries(properties).filter(([, value]) => value !== undefined && value !== null && value !== "")
+  );
+}
+
+export function trackAmplitudeEvent(
+  eventName: string,
+  properties: Record<string, unknown> = {}
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const eventProperties = cleanEventProperties(properties);
+  const amplitudeWindow = getAmplitudeWindow();
+
+  if (!sendToAnalyticsRoute(eventName, eventProperties) && !sendToAmplitude(eventName, eventProperties)) {
+    amplitudeWindow.__authExperimentEventQueue = amplitudeWindow.__authExperimentEventQueue || [];
+    amplitudeWindow.__authExperimentEventQueue.push({ eventName, properties: eventProperties });
+  }
+}
+
 export function trackAuthExperimentEvent(
   eventName: string,
   properties: AuthExperimentProperties
@@ -106,18 +129,14 @@ export function trackAuthExperimentEvent(
     experiment_surface: "auth",
     ...properties,
   };
-  const amplitudeWindow = getAmplitudeWindow();
 
-  if (!sendToAnalyticsRoute(eventName, eventProperties) && !sendToAmplitude(eventName, eventProperties)) {
-    amplitudeWindow.__authExperimentEventQueue = amplitudeWindow.__authExperimentEventQueue || [];
-    amplitudeWindow.__authExperimentEventQueue.push({ eventName, properties: eventProperties });
-  }
+  trackAmplitudeEvent(eventName, eventProperties);
 
   window.dispatchEvent(
     new CustomEvent("auth-experiment:event", {
       detail: {
         eventName,
-        properties: eventProperties,
+        properties: cleanEventProperties(eventProperties),
       },
     })
   );
@@ -140,7 +159,7 @@ export function flushQueuedAuthExperimentEvents() {
   );
 }
 
-export function identifyAuthExperimentUser(userId: unknown) {
+export function identifyAmplitudeUser(userId: unknown) {
   if (typeof window === "undefined" || typeof userId !== "string" || userId.length === 0) {
     return;
   }
@@ -153,6 +172,10 @@ export function identifyAuthExperimentUser(userId: unknown) {
   }
 
   flushQueuedAuthExperimentEvents();
+}
+
+export function identifyAuthExperimentUser(userId: unknown) {
+  identifyAmplitudeUser(userId);
 }
 
 export const AUTH_COPY_EXPERIMENT_KEY = "test";

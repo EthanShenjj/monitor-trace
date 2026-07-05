@@ -13,8 +13,9 @@ export default async function ProtectedLayout({
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   const session = authStore.verifySessionToken(token);
+  const user = session ? await authStore.getUserById(session.userId) : null;
 
-  if (!session || !(await authStore.getUserById(session.userId))) {
+  if (!session || !user) {
     redirect("/login");
   }
 
@@ -22,7 +23,7 @@ export default async function ProtectedLayout({
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
       <Sidebar />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <TopNav />
+        <TopNav user={user} />
         <main style={{ flex: 1, overflowY: "auto", padding: "2rem" }}>{children}</main>
       </div>
     </div>
