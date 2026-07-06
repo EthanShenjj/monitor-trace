@@ -116,9 +116,11 @@ This app also sends product analytics to Mixpanel through the browser SDK. Set t
 
 ```bash
 NEXT_PUBLIC_MIXPANEL_TOKEN="715809b4480606c6237f5ffde5c246b4"
+NEXT_PUBLIC_MIXPANEL_RECORD_SESSIONS_PERCENT="100"
 ```
 
 Mixpanel is initialized once in `src/lib/mixpanel.ts`. Feature code should use the shared helpers from that file instead of importing `mixpanel-browser` directly.
+Session Replay is enabled from the same Mixpanel initialization. Start with `100` while verifying replay capture, then lower the sample rate for production traffic.
 
 Current Mixpanel tracking plan:
 

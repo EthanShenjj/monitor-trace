@@ -19,12 +19,27 @@ type MixpanelUserProfile = {
 };
 
 const mixpanelToken = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN;
+const replaySampleRate = process.env.NEXT_PUBLIC_MIXPANEL_RECORD_SESSIONS_PERCENT;
 let isInitialized = false;
 
 function cleanProperties(properties: MixpanelProperties = {}) {
   return Object.fromEntries(
     Object.entries(properties).filter(([, value]) => value !== undefined && value !== null && value !== "")
   );
+}
+
+function getReplaySampleRate() {
+  if (!replaySampleRate) {
+    return 100;
+  }
+
+  const parsedRate = Number(replaySampleRate);
+
+  if (!Number.isFinite(parsedRate)) {
+    return 100;
+  }
+
+  return Math.min(100, Math.max(0, parsedRate));
 }
 
 export function initMixpanel() {
@@ -37,6 +52,9 @@ export function initMixpanel() {
       debug: process.env.NODE_ENV !== "production",
       track_pageview: false,
       persistence: "localStorage",
+      record_sessions_percent: getReplaySampleRate(),
+      record_mask_all_text: true,
+      record_mask_all_inputs: true,
     });
     mixpanel.register({
       app_name: "ai_trace_monitor",
