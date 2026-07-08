@@ -118,9 +118,9 @@ This app sends product analytics through the shared helpers in `src/lib/analytic
 NEXT_PUBLIC_MIXPANEL_TOKEN="715809b4480606c6237f5ffde5c246b4"
 NEXT_PUBLIC_MIXPANEL_RECORD_SESSIONS_PERCENT="100"
 NEXT_PUBLIC_THINKINGDATA_APP_ID="..."
-NEXT_PUBLIC_THINKINGDATA_SERVER_URL="https://ta-preview.thinkingdata.cn"
+NEXT_PUBLIC_THINKINGDATA_SERVER_URL="https://receiver-ta-preview.thinkingdata.cn"
 THINKINGDATA_APP_ID="..."
-THINKINGDATA_SERVER_URL="https://ta-preview.thinkingdata.cn"
+THINKINGDATA_SERVER_URL="https://receiver-ta-preview.thinkingdata.cn"
 ```
 
 Mixpanel is initialized once in `src/lib/mixpanel.ts`; ThinkingData browser analytics are initialized in `src/lib/thinkingdata.ts`; server-side webhook events use `thinkingdata-node` through `src/lib/serverAnalytics.mjs`. Feature code should use `trackAnalyticsEvent`, `identifyAnalyticsUser`, and `resetAnalytics` instead of importing analytics SDKs directly.

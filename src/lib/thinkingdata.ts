@@ -27,7 +27,7 @@ type ThinkingDataUserProfile = {
   createdAt?: unknown;
 };
 
-const defaultServerUrl = "https://ta-preview.thinkingdata.cn";
+const defaultServerUrl = "https://receiver-ta-preview.thinkingdata.cn";
 const appIdFromEnv = process.env.NEXT_PUBLIC_THINKINGDATA_APP_ID;
 const serverUrlFromEnv = process.env.NEXT_PUBLIC_THINKINGDATA_SERVER_URL;
 const configLoadedKey = "monitor_thinkingdata_config_loaded";

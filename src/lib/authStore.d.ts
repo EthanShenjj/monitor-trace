@@ -30,6 +30,15 @@ type PublicWebhookMessage = {
   createdAt: string;
 };
 
+type PublicEventConfiguration = {
+  id: string;
+  userId: string;
+  source: string;
+  events: Record<string, unknown>[];
+  eventCount: number;
+  createdAt: string;
+};
+
 export function createAuthStore(options: {
   dbPath?: string;
   filePath?: string;
@@ -47,6 +56,11 @@ export function createAuthStore(options: {
     source?: string;
     amountEntryMethod?: string;
   }): Promise<PublicPayment>;
+  createEventConfiguration(input: {
+    userId: string;
+    events: Record<string, unknown>[];
+    source?: string;
+  }): Promise<PublicEventConfiguration>;
   createWebhookMessage(input: {
     provider?: string;
     externalId?: string;

@@ -31,7 +31,7 @@ export default function TopNav({ user }: { user: TopNavUser }) {
       });
     } finally {
       resetAnalytics();
-      router.replace('/login');
+      router.replace('/login?logged_out=1');
       router.refresh();
     }
   };

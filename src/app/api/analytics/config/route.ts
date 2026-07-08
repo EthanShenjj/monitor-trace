@@ -30,7 +30,7 @@ export async function GET() {
       thinkingDataServerUrl:
         process.env.NEXT_PUBLIC_THINKINGDATA_SERVER_URL ||
         process.env.THINKINGDATA_SERVER_URL ||
-        "https://ta-preview.thinkingdata.cn",
+        "https://receiver-ta-preview.thinkingdata.cn",
     },
     {
       headers: {

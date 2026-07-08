@@ -122,6 +122,58 @@ function publicPayment(payment) {
   };
 }
 
+function normalizeEventConfiguration({ userId, events, source }) {
+  const cleanUserId = String(userId || "").trim();
+  const cleanSource = String(source || "events_configuration_page").trim();
+
+  if (!cleanUserId) {
+    throw new Error("User is required");
+  }
+  if (!Array.isArray(events) || events.length === 0) {
+    throw new Error("At least one event configuration is required");
+  }
+  if (events.length > 50) {
+    throw new Error("Too many event configurations");
+  }
+
+  const payload = {
+    source: cleanSource || "events_configuration_page",
+    events,
+  };
+  const configPayload = JSON.stringify(payload);
+
+  if (configPayload.length > 200000) {
+    throw new Error("Event configuration payload is too large");
+  }
+
+  return {
+    userId: cleanUserId,
+    source: payload.source,
+    eventCount: events.length,
+    configPayload,
+  };
+}
+
+function publicEventConfiguration(configuration) {
+  const configPayload = configuration.configPayload || configuration.config_payload || "{}";
+  let payload;
+
+  try {
+    payload = JSON.parse(configPayload);
+  } catch {
+    payload = { events: [] };
+  }
+
+  return {
+    id: configuration.id,
+    userId: configuration.userId || configuration.user_id,
+    source: configuration.source,
+    events: Array.isArray(payload.events) ? payload.events : [],
+    eventCount: configuration.eventCount || configuration.event_count,
+    createdAt: configuration.createdAt || configuration.created_at,
+  };
+}
+
 function toNullableString(value) {
   if (value === undefined || value === null) {
     return null;
@@ -228,6 +280,16 @@ export function createAuthStore({ dbPath, filePath, sessionSecret }) {
           source TEXT NOT NULL,
           amount_entry_method TEXT NOT NULL,
           status TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS event_configurations (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          source TEXT NOT NULL,
+          config_payload TEXT NOT NULL,
+          event_count INTEGER NOT NULL,
           created_at TEXT NOT NULL,
           FOREIGN KEY (user_id) REFERENCES users(id)
         );
@@ -410,6 +472,50 @@ export function createAuthStore({ dbPath, filePath, sessionSecret }) {
         );
 
       return publicPayment(payment);
+    },
+
+    async createEventConfiguration(input) {
+      const clean = normalizeEventConfiguration(input);
+      const database = getDb();
+
+      if (!database.prepare("SELECT 1 FROM users WHERE id = ?").get(clean.userId)) {
+        throw new Error("User not found");
+      }
+
+      const now = new Date().toISOString();
+      const configuration = {
+        id: randomUUID(),
+        userId: clean.userId,
+        source: clean.source,
+        configPayload: clean.configPayload,
+        eventCount: clean.eventCount,
+        createdAt: now,
+      };
+
+      database
+        .prepare(
+          `
+            INSERT INTO event_configurations (
+              id,
+              user_id,
+              source,
+              config_payload,
+              event_count,
+              created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+          `
+        )
+        .run(
+          configuration.id,
+          configuration.userId,
+          configuration.source,
+          configuration.configPayload,
+          configuration.eventCount,
+          configuration.createdAt
+        );
+
+      return publicEventConfiguration(configuration);
     },
 
     async createWebhookMessage(input) {

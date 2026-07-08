@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const ThinkingData = require("thinkingdata-node");
 
-const DEFAULT_THINKINGDATA_SERVER_URL = "https://ta-preview.thinkingdata.cn";
+const DEFAULT_THINKINGDATA_SERVER_URL = "https://receiver-ta-preview.thinkingdata.cn";
 
 let serverSdk = null;
 let serverSdkKey = "";

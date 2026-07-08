@@ -153,6 +153,51 @@ test("createPayment stores a payment for a registered user", async () => {
   });
 });
 
+test("createEventConfiguration stores an event configuration snapshot", async () => {
+  await withStore(async (store, dbPath) => {
+    const user = await store.registerUser({
+      name: "Event Designer",
+      email: "events@example.com",
+      password: "StrongPass123",
+    });
+
+    const configuration = await store.createEventConfiguration({
+      userId: user.id,
+      source: "events_configuration_page",
+      events: [
+        {
+          event_name: "activity_attend",
+          event_display_name: "参加活动",
+          occurrence_probability: 100,
+          next_event: "gold_get",
+          conversion_rate: 100,
+          properties: {
+            activity_type: "周年庆活动",
+            reward_amount: 88,
+          },
+        },
+      ],
+    });
+
+    assert.ok(configuration.id);
+    assert.equal(configuration.userId, user.id);
+    assert.equal(configuration.source, "events_configuration_page");
+    assert.equal(configuration.eventCount, 1);
+    assert.equal(configuration.events[0].event_name, "activity_attend");
+    assert.equal(configuration.events[0].properties.reward_amount, 88);
+
+    const rows = await querySqlite(
+      dbPath,
+      "select user_id, source, event_count, config_payload from event_configurations"
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].user_id, user.id);
+    assert.equal(rows[0].source, "events_configuration_page");
+    assert.equal(rows[0].event_count, 1);
+    assert.equal(JSON.parse(rows[0].config_payload).events[0].event_name, "activity_attend");
+  });
+});
+
 test("ensureUserForSession creates a local session user for serverless API stores", async () => {
   await withStore(async (store, dbPath) => {
     const sessionUser = await store.ensureUserForSession("session-user-123");

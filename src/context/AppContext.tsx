@@ -18,6 +18,7 @@ const translations = {
   zh: {
     dashboard: "控制面板",
     traces: "追踪分析",
+    events: "事件",
     messages: "消息中心",
     playground: "演练场",
     settings: "设置",
@@ -54,6 +55,7 @@ const translations = {
   en: {
     dashboard: "Dashboard",
     traces: "Traces",
+    events: "Events",
     messages: "Messages",
     playground: "Playground",
     settings: "Settings",

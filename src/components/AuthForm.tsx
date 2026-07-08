@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   fetchAuthCopyExperimentVariant,
   getStoredAuthCopyExperimentVariant,
@@ -71,11 +71,14 @@ const authCopyByVariant: Record<AuthCopyExperimentVariant, Record<AuthMode, Auth
 export default function AuthForm({ mode }: { mode: AuthMode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
   const [copyExperimentState, setCopyExperimentState] = useState<{
     variant: AuthCopyExperimentVariant;
     isReady: boolean;
@@ -84,11 +87,40 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
     isReady: false,
   });
   const isRegister = mode === "register";
+  const openedAfterLogout = mode === "login" && searchParams.get("logged_out") === "1";
   const copyVariant = copyExperimentState.variant;
   const copy = authCopyByVariant[copyVariant][mode];
   const switchHref = `${isRegister ? "/login" : "/register"}${
     copyVariant === "treatment" ? "?auth_copy_variant=treatment" : ""
   }`;
+
+  useEffect(() => {
+    if (!openedAfterLogout) {
+      return;
+    }
+
+    const clearLoginForm = () => {
+      setEmail("");
+      setPassword("");
+      setError("");
+      setIsSubmitting(false);
+
+      if (emailInputRef.current) {
+        emailInputRef.current.value = "";
+      }
+      if (passwordInputRef.current) {
+        passwordInputRef.current.value = "";
+      }
+    };
+
+    const clearStateTimeout = window.setTimeout(clearLoginForm, 0);
+    const clearAutofillTimeout = window.setTimeout(clearLoginForm, 100);
+
+    return () => {
+      window.clearTimeout(clearStateTimeout);
+      window.clearTimeout(clearAutofillTimeout);
+    };
+  }, [openedAfterLogout]);
 
   useEffect(() => {
     let isMounted = true;
@@ -352,11 +384,13 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
           <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             <span style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>邮箱</span>
             <input
+              ref={emailInputRef}
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
-              autoComplete="email"
+              autoComplete={openedAfterLogout ? "off" : "email"}
+              name={openedAfterLogout ? "logged-out-email" : "email"}
               className="input-field"
             />
           </label>
@@ -364,12 +398,14 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
           <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             <span style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>密码</span>
             <input
+              ref={passwordInputRef}
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
               minLength={8}
-              autoComplete={isRegister ? "new-password" : "current-password"}
+              autoComplete={openedAfterLogout ? "off" : isRegister ? "new-password" : "current-password"}
+              name={openedAfterLogout ? "logged-out-password" : "password"}
               className="input-field"
             />
           </label>
