@@ -7,6 +7,11 @@ import test from "node:test";
 import { promisify } from "node:util";
 
 import { createAuthStore } from "../src/lib/authStore.mjs";
+import {
+  buildWebhookMessageInput,
+  createThinkingDataWebhookResponse,
+  normalizeWebhookItems,
+} from "../src/lib/thinkingdataWebhook.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -276,6 +281,76 @@ test("createWebhookMessage stores messages and deduplicates external IDs", async
     assert.equal(rows[0].body, "Invoice payment failed");
     assert.equal(rows[0].read_at, null);
   });
+});
+
+test("ThinkingData webhook helpers normalize batched AE messages", async () => {
+  const body = [
+    {
+      push_id: "accountid123987001",
+      custom_params: {
+        gameuid: "123acb001",
+        name: "张三",
+      },
+      params: {
+        title: "每日活动",
+        content: "你好张三，快来参加活动吧！",
+      },
+      "#ops_receipt_properties": {
+        ops_project_id: 1,
+        ops_task_id: "0050",
+        ops_task_instance_id: "0050_2023-01-01",
+        ops_task_exec_detail_id: "17795",
+        ops_request_id: "f7b66eb7-3363-4a46-a402-601a64b45f76",
+        ops_push_language: "default",
+      },
+    },
+  ];
+
+  const items = normalizeWebhookItems(body);
+  const input = buildWebhookMessageInput(items[0], 1);
+
+  assert.equal(items.length, 1);
+  assert.equal(input.provider, "thinkingdata_ae");
+  assert.equal(input.externalId, "f7b66eb7-3363-4a46-a402-601a64b45f76:17795");
+  assert.equal(input.eventType, "ae_ops_task_webhook_push");
+  assert.equal(input.title, "每日活动");
+  assert.equal(input.body, "你好张三，快来参加活动吧！");
+  assert.equal(input.analytics.pushId, "accountid123987001");
+  assert.equal(input.analytics.opsTaskId, "0050");
+  assert.equal(input.analytics.opsRequestId, "f7b66eb7-3363-4a46-a402-601a64b45f76");
+  assert.equal(input.rawPayload["#ops_receipt_properties"].ops_task_exec_detail_id, "17795");
+});
+
+test("ThinkingData webhook response follows return_code and fail_list contract", () => {
+  assert.deepEqual(
+    createThinkingDataWebhookResponse({
+      storedCount: 2,
+      duplicateCount: 0,
+      failList: [{ index: 3, message: "push id not found" }],
+    }),
+    {
+      return_code: 0,
+      return_message: "success",
+      data: {
+        fail_list: [{ index: 3, message: "push id not found" }],
+      },
+    }
+  );
+
+  assert.deepEqual(
+    createThinkingDataWebhookResponse({
+      storedCount: 0,
+      duplicateCount: 0,
+      failList: [{ index: 1, message: "failed" }],
+    }),
+    {
+      return_code: 1,
+      return_message: "failed",
+      data: {
+        fail_list: [{ index: 1, message: "failed" }],
+      },
+    }
+  );
 });
 
 test("listWebhookMessages and markWebhookMessageRead track unread state", async () => {

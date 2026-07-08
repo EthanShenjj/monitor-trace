@@ -144,13 +144,27 @@ Identity rules:
 
 ## Webhook Message Center
 
-Set a server-only secret before receiving webhook pushes:
+ThinkingData AE Webhook channels can push batched JSON messages directly to `/api/webhooks/messages`. The endpoint accepts the documented JSON Array request body, stores each message in SQLite, preserves `#ops_receipt_properties` in the raw payload, and returns ThinkingData's strict response shape:
 
-```bash
-WEBHOOK_SECRET="replace-with-a-long-random-secret"
+```json
+{
+  "return_code": 0,
+  "return_message": "success",
+  "data": {
+    "fail_list": []
+  }
+}
 ```
 
-External systems can push JSON messages to `/api/webhooks/messages` with either `Authorization: Bearer <WEBHOOK_SECRET>` or `x-webhook-secret: <WEBHOOK_SECRET>`. The app stores webhook messages in the local SQLite store and shows them on `/messages` for logged-in users.
+Example request:
+
+```bash
+curl -X POST "https://monitor-trace.vercel.app/api/webhooks/messages" \
+  -H "Content-Type: application/json" \
+  -d '[{"push_id":"accountid123987001","custom_params":{"name":"张三"},"params":{"title":"每日活动","content":"你好张三，快来参加活动吧！"},"#ops_receipt_properties":{"ops_task_id":"0050","ops_request_id":"f7b66eb7-3363-4a46-a402-601a64b45f76","ops_task_exec_detail_id":"17795","ops_project_id":1}}]'
+```
+
+Messages are visible on `/messages` for logged-in users. If a batch is partially accepted, `return_code` remains `0` and `data.fail_list` contains failed item indexes starting from `1`, matching ThinkingData's Webhook channel contract.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

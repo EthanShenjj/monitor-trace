@@ -1,83 +1,97 @@
 import { NextResponse } from "next/server";
 import { authStore } from "@/lib/authStore.mjs";
 import { trackServerThinkingDataEvent } from "@/lib/serverAnalytics.mjs";
+import {
+  buildWebhookMessageInput,
+  createThinkingDataWebhookResponse,
+  normalizeWebhookItems,
+} from "@/lib/thinkingdataWebhook.mjs";
 
 export const dynamic = "force-dynamic";
 
-function getWebhookSecret(request) {
-  const authHeader = request.headers.get("authorization") || "";
-
-  if (authHeader.toLowerCase().startsWith("bearer ")) {
-    return authHeader.slice(7).trim();
-  }
-
-  return request.headers.get("x-webhook-secret") || "";
-}
-
-function isAuthorizedWebhook(request) {
-  const expectedSecret = process.env.WEBHOOK_SECRET;
-
-  if (!expectedSecret) {
-    return { ok: false, status: 503, error: "Webhook secret is not configured" };
-  }
-
-  if (getWebhookSecret(request) !== expectedSecret) {
-    return { ok: false, status: 401, error: "Invalid webhook secret" };
-  }
-
-  return { ok: true };
-}
-
 export async function POST(request) {
-  const auth = isAuthorizedWebhook(request);
-
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
-
   let body;
 
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json(
+      {
+        return_code: 1,
+        return_message: "Invalid JSON body",
+        data: {
+          fail_list: [],
+        },
+      },
+      { status: 400 }
+    );
   }
 
   try {
-    const provider =
-      body?.provider ||
-      body?.source ||
-      request.headers.get("x-webhook-provider") ||
-      "generic";
-    const externalId =
-      body?.external_id ||
-      body?.externalId ||
-      body?.event_id ||
-      body?.eventId ||
-      body?.id ||
-      request.headers.get("x-webhook-event-id");
-    const { message, duplicate } = await authStore.createWebhookMessage({
-      provider,
-      externalId,
-      eventType: body?.event_type || body?.eventType || body?.type,
-      title: body?.title || body?.subject || body?.name,
-      body: body?.body || body?.message || body?.text || body?.content,
-      rawPayload: body,
-    });
-    await trackServerThinkingDataEvent("webhook_message_received", {
-      provider: message.provider,
-      event_type: message.eventType,
-      message_status: message.readAt ? "read" : "unread",
-      duplicate,
-    });
+    const items = normalizeWebhookItems(body);
+    const provider = request.headers.get("x-webhook-provider") || undefined;
+    const failList = [];
+    let storedCount = 0;
+    let duplicateCount = 0;
 
-    return NextResponse.json(
-      { message, duplicate },
-      { status: duplicate ? 200 : 201 }
-    );
+    for (const [batchIndex, item] of items.entries()) {
+      const index = batchIndex + 1;
+
+      try {
+        const input = buildWebhookMessageInput(item, index, { provider });
+        const { message, duplicate } = await authStore.createWebhookMessage(input);
+
+        if (duplicate) {
+          duplicateCount += 1;
+        } else {
+          storedCount += 1;
+        }
+
+        await trackServerThinkingDataEvent(
+          "webhook_message_received",
+          {
+            provider: message.provider,
+            event_type: message.eventType,
+            message_status: message.readAt ? "read" : "unread",
+            duplicate,
+            batch_index: index,
+            batch_size: items.length,
+            push_id: input.analytics.pushId,
+            ops_project_id: input.analytics.opsProjectId,
+            ops_task_id: input.analytics.opsTaskId,
+            ops_task_instance_id: input.analytics.opsTaskInstanceId,
+            ops_task_exec_detail_id: input.analytics.opsTaskExecDetailId,
+            ops_request_id: input.analytics.opsRequestId,
+            ops_flow_id: input.analytics.opsFlowId,
+            ops_node_id: input.analytics.opsNodeId,
+            ops_push_language: input.analytics.opsPushLanguage,
+          },
+          { accountId: input.analytics.pushId }
+        );
+      } catch (error) {
+        failList.push({
+          index,
+          message: error?.message || "Unable to store webhook message",
+        });
+      }
+    }
+
+    return NextResponse.json({
+      ...createThinkingDataWebhookResponse({
+        storedCount,
+        duplicateCount,
+        failList,
+      }),
+    });
   } catch (error) {
     return NextResponse.json(
-      { error: error?.message || "Unable to store webhook message" },
+      {
+        return_code: 1,
+        return_message: error?.message || "Unable to process webhook request",
+        data: {
+          fail_list: [],
+        },
+      },
       { status: 400 }
     );
   }
