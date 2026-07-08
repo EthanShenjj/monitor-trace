@@ -12,7 +12,7 @@ async function getAuthenticatedUser() {
     return null;
   }
 
-  return authStore.getUserById(session.userId);
+  return authStore.ensureUserForSession(session.userId);
 }
 
 export async function POST(request) {

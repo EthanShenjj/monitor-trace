@@ -153,6 +153,36 @@ test("createPayment stores a payment for a registered user", async () => {
   });
 });
 
+test("ensureUserForSession creates a local session user for serverless API stores", async () => {
+  await withStore(async (store, dbPath) => {
+    const sessionUser = await store.ensureUserForSession("session-user-123");
+    const repeated = await store.ensureUserForSession("session-user-123");
+
+    assert.equal(sessionUser.id, "session-user-123");
+    assert.equal(repeated.id, sessionUser.id);
+    assert.equal(repeated.email, sessionUser.email);
+
+    const payment = await store.createPayment({
+      userId: sessionUser.id,
+      amount: 97.94,
+      currency: "USD",
+      paymentMethod: "simulated",
+      source: "dashboard_payment_form",
+      amountEntryMethod: "random",
+    });
+
+    assert.equal(payment.userId, sessionUser.id);
+    assert.equal(payment.amountCents, 9794);
+
+    const rows = await querySqlite(
+      dbPath,
+      "select id, email from users where id = 'session-user-123'"
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].email, "session-session-user-123@monitor-trace.local");
+  });
+});
+
 test("createWebhookMessage stores messages and deduplicates external IDs", async () => {
   await withStore(async (store, dbPath) => {
     const created = await store.createWebhookMessage({

@@ -38,6 +38,7 @@ export function createAuthStore(options: {
   registerUser(input: { name: string; email: string; password: string }): Promise<PublicUser>;
   authenticateUser(email: string, password: string): Promise<PublicUser>;
   getUserById(userId: string): Promise<PublicUser | null>;
+  ensureUserForSession(userId: string): Promise<PublicUser>;
   createPayment(input: {
     userId: string;
     amount: number;

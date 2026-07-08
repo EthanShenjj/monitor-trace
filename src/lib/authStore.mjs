@@ -316,6 +316,49 @@ export function createAuthStore({ dbPath, filePath, sessionSecret }) {
       return user ? publicUser(user) : null;
     },
 
+    async ensureUserForSession(userId) {
+      const cleanUserId = String(userId || "").trim();
+
+      if (!cleanUserId) {
+        throw new Error("User is required");
+      }
+
+      const database = getDb();
+      const existing = database
+        .prepare(
+          `
+            SELECT id, name, email, created_at AS createdAt
+            FROM users
+            WHERE id = ?
+          `
+        )
+        .get(cleanUserId);
+
+      if (existing) {
+        return publicUser(existing);
+      }
+
+      const now = new Date().toISOString();
+      const user = {
+        id: cleanUserId,
+        name: "Session User",
+        email: `session-${cleanUserId}@monitor-trace.local`,
+        passwordHash: "session-placeholder",
+        createdAt: now,
+      };
+
+      database
+        .prepare(
+          `
+            INSERT INTO users (id, name, email, password_hash, created_at)
+            VALUES (?, ?, ?, ?, ?)
+          `
+        )
+        .run(user.id, user.name, user.email, user.passwordHash, user.createdAt);
+
+      return publicUser(user);
+    },
+
     async createPayment(input) {
       const clean = validatePayment(input);
       const database = getDb();
