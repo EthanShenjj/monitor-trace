@@ -141,9 +141,17 @@ export function buildWebhookMessageInput(item, index, options = {}) {
   };
 }
 
-export function createThinkingDataWebhookResponse({ storedCount, duplicateCount, failList }) {
-  const acceptedCount = storedCount + duplicateCount;
-  const returnCode = acceptedCount > 0 || failList.length === 0 ? 0 : 1;
+export function createThinkingDataWebhookResponse({
+  acceptedCount,
+  storedCount = 0,
+  duplicateCount = 0,
+  failList,
+}) {
+  const cleanAcceptedCount =
+    Number.isFinite(acceptedCount) && acceptedCount >= 0
+      ? acceptedCount
+      : storedCount + duplicateCount;
+  const returnCode = cleanAcceptedCount > 0 || failList.length === 0 ? 0 : 1;
 
   return {
     return_code: returnCode,

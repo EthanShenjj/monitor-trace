@@ -12,6 +12,7 @@ import {
   createThinkingDataWebhookResponse,
   normalizeWebhookItems,
 } from "../src/lib/thinkingdataWebhook.mjs";
+import { handleWebhookMessages } from "../src/lib/webhookMessages.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -351,6 +352,44 @@ test("ThinkingData webhook response follows return_code and fail_list contract",
       },
     }
   );
+});
+
+test("webhook handler acknowledges valid Hermes messages when persistence fails", async () => {
+  const warnings = [];
+  const response = await handleWebhookMessages({
+    body: [
+      {
+        push_id: "accountid123987001",
+        params: {
+          title: "每日活动",
+          content: "你好张三，快来参加活动吧！",
+        },
+        "#ops_receipt_properties": {
+          ops_task_id: "0050",
+          ops_request_id: "f7b66eb7-3363-4a46-a402-601a64b45f76",
+          ops_task_exec_detail_id: "17795",
+        },
+      },
+    ],
+    async createWebhookMessage() {
+      throw new Error("database is unavailable");
+    },
+    logger: {
+      warn(message, details) {
+        warnings.push({ message, details });
+      },
+    },
+  });
+
+  assert.deepEqual(response, {
+    return_code: 0,
+    return_message: "success",
+    data: {
+      fail_list: [],
+    },
+  });
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].details.error, "database is unavailable");
 });
 
 test("listWebhookMessages and markWebhookMessageRead track unread state", async () => {

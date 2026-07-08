@@ -144,7 +144,7 @@ Identity rules:
 
 ## Webhook Message Center
 
-ThinkingData AE Webhook channels can push batched JSON messages directly to `/api/webhooks/messages`. The endpoint accepts the documented JSON Array request body, stores each message in SQLite, preserves `#ops_receipt_properties` in the raw payload, and returns ThinkingData's strict response shape:
+ThinkingData AE Webhook channels can push batched JSON messages directly to `/api/webhooks/messages`. The endpoint accepts the documented JSON Array request body, returns ThinkingData's strict success response shape for valid messages, and then best-effort stores each message in SQLite with `#ops_receipt_properties` preserved in the raw payload:
 
 ```json
 {

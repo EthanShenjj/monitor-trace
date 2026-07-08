@@ -1,13 +1,45 @@
 import { NextResponse } from "next/server";
-import { authStore } from "@/lib/authStore.mjs";
-import { trackServerThinkingDataEvent } from "@/lib/serverAnalytics.mjs";
-import {
-  buildWebhookMessageInput,
-  createThinkingDataWebhookResponse,
-  normalizeWebhookItems,
-} from "@/lib/thinkingdataWebhook.mjs";
+import { handleWebhookMessages } from "@/lib/webhookMessages.mjs";
 
 export const dynamic = "force-dynamic";
+
+async function createWebhookMessage(input) {
+  const { authStore } = await import("@/lib/authStore.mjs");
+
+  return authStore.createWebhookMessage(input);
+}
+
+async function trackWebhookMessage({
+  message,
+  input,
+  duplicate,
+  index,
+  batchSize,
+}) {
+  const { trackServerThinkingDataEvent } = await import("@/lib/serverAnalytics.mjs");
+
+  await trackServerThinkingDataEvent(
+    "webhook_message_received",
+    {
+      provider: message.provider,
+      event_type: message.eventType,
+      message_status: message.readAt ? "read" : "unread",
+      duplicate,
+      batch_index: index,
+      batch_size: batchSize,
+      push_id: input.analytics.pushId,
+      ops_project_id: input.analytics.opsProjectId,
+      ops_task_id: input.analytics.opsTaskId,
+      ops_task_instance_id: input.analytics.opsTaskInstanceId,
+      ops_task_exec_detail_id: input.analytics.opsTaskExecDetailId,
+      ops_request_id: input.analytics.opsRequestId,
+      ops_flow_id: input.analytics.opsFlowId,
+      ops_node_id: input.analytics.opsNodeId,
+      ops_push_language: input.analytics.opsPushLanguage,
+    },
+    { accountId: input.analytics.pushId }
+  );
+}
 
 export async function POST(request) {
   let body;
@@ -28,60 +60,18 @@ export async function POST(request) {
   }
 
   try {
-    const items = normalizeWebhookItems(body);
     const provider = request.headers.get("x-webhook-provider") || undefined;
-    const failList = [];
-    let storedCount = 0;
-    let duplicateCount = 0;
+    const response = await handleWebhookMessages({
+      body,
+      provider,
+      createWebhookMessage,
+      trackWebhookMessage,
+    });
 
-    for (const [batchIndex, item] of items.entries()) {
-      const index = batchIndex + 1;
-
-      try {
-        const input = buildWebhookMessageInput(item, index, { provider });
-        const { message, duplicate } = await authStore.createWebhookMessage(input);
-
-        if (duplicate) {
-          duplicateCount += 1;
-        } else {
-          storedCount += 1;
-        }
-
-        await trackServerThinkingDataEvent(
-          "webhook_message_received",
-          {
-            provider: message.provider,
-            event_type: message.eventType,
-            message_status: message.readAt ? "read" : "unread",
-            duplicate,
-            batch_index: index,
-            batch_size: items.length,
-            push_id: input.analytics.pushId,
-            ops_project_id: input.analytics.opsProjectId,
-            ops_task_id: input.analytics.opsTaskId,
-            ops_task_instance_id: input.analytics.opsTaskInstanceId,
-            ops_task_exec_detail_id: input.analytics.opsTaskExecDetailId,
-            ops_request_id: input.analytics.opsRequestId,
-            ops_flow_id: input.analytics.opsFlowId,
-            ops_node_id: input.analytics.opsNodeId,
-            ops_push_language: input.analytics.opsPushLanguage,
-          },
-          { accountId: input.analytics.pushId }
-        );
-      } catch (error) {
-        failList.push({
-          index,
-          message: error?.message || "Unable to store webhook message",
-        });
-      }
-    }
-
-    return NextResponse.json({
-      ...createThinkingDataWebhookResponse({
-        storedCount,
-        duplicateCount,
-        failList,
-      }),
+    return NextResponse.json(response, {
+      headers: {
+        "Cache-Control": "no-store, max-age=0",
+      },
     });
   } catch (error) {
     return NextResponse.json(
