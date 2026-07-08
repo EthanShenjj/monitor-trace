@@ -2,7 +2,7 @@
 
 import { chartData } from '@/lib/mockData';
 import { useApp } from '@/context/AppContext';
-import { trackMixpanelEvent } from '@/lib/mixpanel';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 import { useState } from 'react';
 
 type Metric = 'requests' | 'tokens' | 'cost' | 'errors';
@@ -20,7 +20,7 @@ export default function ActivityChart() {
 
   function handleMetricSelect(nextMetric: Metric) {
     setActiveMetric(nextMetric);
-    trackMixpanelEvent('activity_metric_selected', {
+    trackAnalyticsEvent('activity_metric_selected', {
       metric: nextMetric,
       previous_metric: activeMetric,
       platform: 'web',

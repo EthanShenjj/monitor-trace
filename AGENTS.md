@@ -68,6 +68,9 @@ Rules:
 | `trace_filter_clicked` | User clicks the trace filter control | `source`, `platform` | `src/app/(protected)/traces/page.tsx` |
 | `trace_opened` | User clicks a trace from dashboard or trace list | `source`, `trace_id`, `project_name`, `model`, `trace_status`, `platform` | `src/app/(protected)/page.tsx`, `src/app/(protected)/traces/page.tsx` |
 | `trace_viewed` | Logged-in user opens a trace detail page | `trace_id`, `project_name`, `model`, `trace_status`, `total_tokens`, `latency_ms`, `cost_usd`, `span_count` | `src/app/(protected)/traces/[id]/page.tsx` |
+| `message_center_viewed` | Logged-in user views the message center | `status_filter`, `platform` | `src/app/(protected)/messages/page.tsx` |
+| `message_opened` | User opens a webhook message | `provider`, `event_type`, `message_status`, `platform` | `src/app/(protected)/messages/page.tsx` |
+| `message_marked_read` | User marks a webhook message as read | `provider`, `event_type`, `platform` | `src/app/(protected)/messages/page.tsx` |
 | `project_selected` | User changes the top-nav project selector | `project_name`, `platform` | `src/components/TopNav.tsx` |
 | `theme_changed` | User changes light/dark theme | `previous_theme`, `new_theme`, `platform` | `src/context/AppContext.tsx` |
 | `language_changed` | User changes UI language | `previous_language`, `new_language`, `platform` | `src/context/AppContext.tsx` |

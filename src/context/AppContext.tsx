@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { trackMixpanelEvent } from '@/lib/mixpanel';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 
 type Theme = 'light' | 'dark';
 type Locale = 'zh' | 'en';
@@ -18,6 +18,7 @@ const translations = {
   zh: {
     dashboard: "控制面板",
     traces: "追踪分析",
+    messages: "消息中心",
     playground: "演练场",
     settings: "设置",
     project: "项目",
@@ -53,6 +54,7 @@ const translations = {
   en: {
     dashboard: "Dashboard",
     traces: "Traces",
+    messages: "Messages",
     playground: "Playground",
     settings: "Settings",
     project: "Project",
@@ -101,7 +103,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const toggleTheme = () => {
     setTheme(prev => {
       const nextTheme = prev === 'light' ? 'dark' : 'light';
-      trackMixpanelEvent('theme_changed', {
+      trackAnalyticsEvent('theme_changed', {
         previous_theme: prev,
         new_theme: nextTheme,
         platform: 'web',
@@ -113,7 +115,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const toggleLocale = () => {
     setLocale(prev => {
       const nextLocale = prev === 'zh' ? 'en' : 'zh';
-      trackMixpanelEvent('language_changed', {
+      trackAnalyticsEvent('language_changed', {
         previous_language: prev,
         new_language: nextLocale,
         platform: 'web',

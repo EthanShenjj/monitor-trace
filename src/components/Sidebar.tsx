@@ -3,11 +3,13 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 import { aggregateMetrics } from '@/lib/mockData';
 
 const navItems = [
   { href: '/',       labelKey: 'dashboard' as const, icon: '▣' },
   { href: '/traces', labelKey: 'traces'    as const, icon: '⋯' },
+  { href: '/messages', labelKey: 'messages' as const, icon: '✉' },
   { href: '#',       labelKey: 'playground'as const, icon: '◈' },
   { href: '#',       labelKey: 'settings'  as const, icon: '⚙' },
 ] as const;
@@ -64,6 +66,14 @@ export default function Sidebar() {
                 background: isActive ? 'var(--accent-glow)' : 'transparent',
                 border: isActive ? '1px solid var(--border-focus)' : '1px solid transparent',
                 transition: 'all 0.2s ease',
+              }}
+              onClick={() => {
+                trackAnalyticsEvent('sidebar_nav_clicked', {
+                  nav_item: item.labelKey,
+                  destination: item.href,
+                  is_active: isActive,
+                  platform: 'web',
+                });
               }}
               className={isActive ? '' : 'nav-link'}
             >

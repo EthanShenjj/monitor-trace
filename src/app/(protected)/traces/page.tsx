@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { ChangeEvent, KeyboardEvent, useEffect, useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { trackMixpanelEvent } from '@/lib/mixpanel';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 import { mockTraces } from '@/lib/mockData';
 
 export default function TracesList() {
@@ -11,7 +11,7 @@ export default function TracesList() {
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    trackMixpanelEvent('trace_list_viewed', {
+    trackAnalyticsEvent('trace_list_viewed', {
       platform: 'web',
       trace_count: mockTraces.length,
     });
@@ -24,8 +24,21 @@ export default function TracesList() {
       return;
     }
 
-    trackMixpanelEvent('trace_searched', {
+    const resultCount = mockTraces.filter((trace) => {
+      const searchableText = [
+        trace.id,
+        trace.projectName,
+        trace.model,
+        trace.status,
+        trace.userId,
+      ].join(' ').toLowerCase();
+
+      return searchableText.includes(cleanQuery.toLowerCase());
+    }).length;
+
+    trackAnalyticsEvent('trace_searched', {
       search_query_length: cleanQuery.length,
+      result_count: resultCount,
       trigger,
       platform: 'web',
     });
@@ -70,7 +83,7 @@ export default function TracesList() {
           <button
             className="btn btn-outline"
             onClick={() => {
-              trackMixpanelEvent('trace_filter_clicked', {
+              trackAnalyticsEvent('trace_filter_clicked', {
                 source: 'trace_list',
                 platform: 'web',
               });
@@ -108,7 +121,7 @@ export default function TracesList() {
                     href={`/traces/${trace.id}`}
                     className="accent-gradient"
                     onClick={() => {
-                      trackMixpanelEvent('trace_opened', {
+                      trackAnalyticsEvent('trace_opened', {
                         source: 'trace_list',
                         trace_id: trace.id,
                         project_name: trace.projectName,

@@ -2,7 +2,7 @@
 
 import { useApp } from '@/context/AppContext';
 import { trackAmplitudeEvent } from '@/lib/amplitude';
-import { trackMixpanelEvent } from '@/lib/mixpanel';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 import { aggregateMetrics, mockTraces } from '@/lib/mockData';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -26,9 +26,10 @@ export default function Dashboard() {
   const [amountEntryMethod, setAmountEntryMethod] = useState<'manual' | 'random'>('manual');
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
   const [showPaymentSuccessTooltip, setShowPaymentSuccessTooltip] = useState(false);
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
 
   useEffect(() => {
-    trackMixpanelEvent('dashboard_viewed', {
+    trackAnalyticsEvent('dashboard_viewed', {
       platform: 'web',
       visible_trace_count: Math.min(mockTraces.length, 5),
       total_requests: aggregateMetrics.totalRequests,
@@ -65,15 +66,28 @@ export default function Dashboard() {
     setAmountEntryMethod('random');
     setPaymentStatus(null);
     setShowPaymentSuccessTooltip(false);
+    trackAnalyticsEvent('payment_random_amount_clicked', {
+      ...PAYMENT_EVENT_PROPERTIES,
+      generated_payment_amount: Number(nextAmount),
+    });
   };
 
-  const handlePaymentSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handlePaymentSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!canSubmitPayment || normalizedPaymentAmount === null) {
       setPaymentStatus(locale === 'zh' ? '请输入大于 0 的金额' : 'Enter an amount greater than 0');
+      trackAnalyticsEvent('payment_failed', {
+        ...PAYMENT_EVENT_PROPERTIES,
+        failure_reason: 'invalid_amount',
+        amount_entry_method: amountEntryMethod,
+      });
       return;
     }
+
+    setIsSavingPayment(true);
+    setPaymentStatus(null);
+    setShowPaymentSuccessTooltip(false);
 
     const paymentProperties = {
       ...PAYMENT_EVENT_PROPERTIES,
@@ -81,10 +95,61 @@ export default function Dashboard() {
       amount_entry_method: amountEntryMethod,
     };
 
-    trackAmplitudeEvent('Payment Simulated', paymentProperties);
-    trackMixpanelEvent('payment_simulated', paymentProperties);
-    setPaymentStatus(null);
-    setShowPaymentSuccessTooltip(true);
+    try {
+      let responseStatus: number | null = null;
+      const response = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: normalizedPaymentAmount,
+          currency: paymentProperties.currency,
+          paymentMethod: paymentProperties.payment_method,
+          source: paymentProperties.source,
+          amountEntryMethod: paymentProperties.amount_entry_method,
+        }),
+      });
+      responseStatus = response.status;
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const paymentError = new Error(payload?.error || 'Unable to store payment');
+        paymentError.name = String(responseStatus);
+        throw paymentError;
+      }
+
+      trackAmplitudeEvent('Payment Simulated', paymentProperties);
+      trackAnalyticsEvent('payment_simulated', paymentProperties);
+      setShowPaymentSuccessTooltip(true);
+    } catch (error) {
+      const statusCode = error instanceof Error && /^\d+$/.test(error.name) ? Number(error.name) : undefined;
+      const failureReason = error instanceof Error ? error.message : 'Unable to store payment';
+
+      trackAnalyticsEvent('payment_failed', {
+        ...paymentProperties,
+        status_code: statusCode,
+        failure_reason: failureReason,
+      });
+
+      if (statusCode) {
+        trackAnalyticsEvent('api_request_failed', {
+          api_path: '/api/payments',
+          status_code: statusCode,
+          feature: 'payment_simulation',
+          failure_reason: failureReason,
+          platform: 'web',
+        });
+      }
+
+      setPaymentStatus(
+        error instanceof Error
+          ? error.message
+          : locale === 'zh'
+            ? '付费保存失败'
+            : 'Unable to store payment'
+      );
+    } finally {
+      setIsSavingPayment(false);
+    }
   };
 
   const metricCards = [
@@ -129,7 +194,7 @@ export default function Dashboard() {
         <button
           className="btn btn-primary"
           onClick={() => {
-            trackMixpanelEvent('report_download_requested', {
+            trackAnalyticsEvent('report_download_requested', {
               source: 'dashboard',
               platform: 'web',
             });
@@ -194,8 +259,8 @@ export default function Dashboard() {
         <button type="button" className="btn btn-outline" onClick={handleRandomPaymentAmount}>
           {locale === 'zh' ? '随机金额' : 'Random Amount'}
         </button>
-        <button type="submit" className="btn btn-primary" disabled={!canSubmitPayment}>
-          {locale === 'zh' ? '付费' : 'Pay'}
+        <button type="submit" className="btn btn-primary" disabled={!canSubmitPayment || isSavingPayment}>
+          {isSavingPayment ? (locale === 'zh' ? '保存中' : 'Saving') : locale === 'zh' ? '付费' : 'Pay'}
         </button>
         {showPaymentSuccessTooltip ? (
           <div
@@ -242,7 +307,7 @@ export default function Dashboard() {
           <Link
             href="/traces"
             onClick={() => {
-              trackMixpanelEvent('trace_list_opened', {
+              trackAnalyticsEvent('trace_list_opened', {
                 source: 'dashboard_recent_traces',
                 platform: 'web',
               });
@@ -277,7 +342,7 @@ export default function Dashboard() {
                       href={`/traces/${trace.id}`}
                       className="accent-gradient"
                       onClick={() => {
-                        trackMixpanelEvent('trace_opened', {
+                        trackAnalyticsEvent('trace_opened', {
                           source: 'dashboard_recent_traces',
                           trace_id: trace.id,
                           project_name: trace.projectName,

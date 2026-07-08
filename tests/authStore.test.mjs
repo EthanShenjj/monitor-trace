@@ -113,3 +113,125 @@ test("session tokens round trip and fail after tampering", async () => {
     assert.equal(store.verifySessionToken(tampered), null);
   });
 });
+
+test("createPayment stores a payment for a registered user", async () => {
+  await withStore(async (store, dbPath) => {
+    const user = await store.registerUser({
+      name: "Nora Vale",
+      email: "nora@example.com",
+      password: "StrongPass123",
+    });
+
+    const payment = await store.createPayment({
+      userId: user.id,
+      amount: 29,
+      currency: "usd",
+      paymentMethod: "simulated",
+      source: "dashboard_payment_form",
+      amountEntryMethod: "manual",
+    });
+
+    assert.ok(payment.id);
+    assert.equal(payment.userId, user.id);
+    assert.equal(payment.amount, 29);
+    assert.equal(payment.amountCents, 2900);
+    assert.equal(payment.currency, "USD");
+    assert.equal(payment.status, "succeeded");
+
+    const rows = await querySqlite(
+      dbPath,
+      "select user_id, amount_cents, currency, payment_method, source, amount_entry_method, status from payments"
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].user_id, user.id);
+    assert.equal(rows[0].amount_cents, 2900);
+    assert.equal(rows[0].currency, "USD");
+    assert.equal(rows[0].payment_method, "simulated");
+    assert.equal(rows[0].source, "dashboard_payment_form");
+    assert.equal(rows[0].amount_entry_method, "manual");
+    assert.equal(rows[0].status, "succeeded");
+  });
+});
+
+test("createWebhookMessage stores messages and deduplicates external IDs", async () => {
+  await withStore(async (store, dbPath) => {
+    const created = await store.createWebhookMessage({
+      provider: "stripe",
+      externalId: "evt_123",
+      eventType: "payment_failed",
+      title: "Payment failed",
+      body: "Invoice payment failed",
+      rawPayload: {
+        id: "evt_123",
+        type: "payment_failed",
+        invoice: "in_123",
+      },
+    });
+
+    assert.equal(created.duplicate, false);
+    assert.ok(created.message.id);
+    assert.equal(created.message.provider, "stripe");
+    assert.equal(created.message.externalId, "evt_123");
+    assert.equal(created.message.eventType, "payment_failed");
+    assert.equal(created.message.readAt, null);
+    assert.equal(created.message.rawPayload.invoice, "in_123");
+
+    const duplicate = await store.createWebhookMessage({
+      provider: "stripe",
+      externalId: "evt_123",
+      eventType: "payment_failed",
+      title: "Duplicate event",
+      body: "Should not create a second row",
+      rawPayload: { id: "evt_123" },
+    });
+
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(duplicate.message.id, created.message.id);
+    assert.equal(duplicate.message.title, "Payment failed");
+
+    const rows = await querySqlite(
+      dbPath,
+      "select provider, external_id, event_type, title, body, read_at from webhook_messages"
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].provider, "stripe");
+    assert.equal(rows[0].external_id, "evt_123");
+    assert.equal(rows[0].event_type, "payment_failed");
+    assert.equal(rows[0].title, "Payment failed");
+    assert.equal(rows[0].body, "Invoice payment failed");
+    assert.equal(rows[0].read_at, null);
+  });
+});
+
+test("listWebhookMessages and markWebhookMessageRead track unread state", async () => {
+  await withStore(async (store) => {
+    const first = await store.createWebhookMessage({
+      provider: "github",
+      externalId: "delivery-1",
+      eventType: "issue_opened",
+      title: "Issue opened",
+      body: "A new issue was opened",
+      rawPayload: { action: "opened" },
+    });
+    await store.createWebhookMessage({
+      provider: "github",
+      externalId: "delivery-2",
+      eventType: "issue_closed",
+      title: "Issue closed",
+      body: "An issue was closed",
+      rawPayload: { action: "closed" },
+    });
+
+    const beforeRead = await store.listWebhookMessages({ status: "unread" });
+    assert.equal(beforeRead.unreadCount, 2);
+    assert.equal(beforeRead.messages.length, 2);
+
+    const marked = await store.markWebhookMessageRead(first.message.id);
+    assert.ok(marked.readAt);
+
+    const afterRead = await store.listWebhookMessages({ status: "unread" });
+    assert.equal(afterRead.unreadCount, 1);
+    assert.equal(afterRead.messages.length, 1);
+    assert.equal(afterRead.messages[0].externalId, "delivery-2");
+  });
+});

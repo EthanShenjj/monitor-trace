@@ -17,7 +17,7 @@ import {
   resolveAuthCopyExperimentVariant,
   trackAuthExperimentEvent,
 } from "@/lib/amplitude";
-import { identifyMixpanelUser, trackMixpanelEvent } from "@/lib/mixpanel";
+import { identifyAnalyticsUser, trackAnalyticsEvent } from "@/lib/analytics";
 
 type AuthMode = "login" | "register";
 type AuthCopy = {
@@ -179,7 +179,7 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
       experiment_variant: copyVariant,
     };
 
-    trackMixpanelEvent("auth_page_viewed", {
+    void trackAnalyticsEvent("auth_page_viewed", {
       ...experimentProperties,
       platform: "web",
     });
@@ -209,7 +209,7 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
     trackAuthExperimentEvent("Auth Form Submitted", {
       ...experimentProperties,
     });
-    trackMixpanelEvent("auth_form_submitted", {
+    void trackAnalyticsEvent("auth_form_submitted", {
       ...experimentProperties,
       platform: "web",
     });
@@ -232,7 +232,7 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
           status_code: response.status,
           error_message: payload?.error || "请求失败，请稍后重试",
         });
-        trackMixpanelEvent("auth_form_failed", {
+        void trackAnalyticsEvent("auth_form_failed", {
           ...experimentProperties,
           platform: "web",
           status_code: response.status,
@@ -242,7 +242,7 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
       }
 
       identifyAuthExperimentUser(payload?.user?.id);
-      identifyMixpanelUser(payload?.user?.id, {
+      await identifyAnalyticsUser(payload?.user?.id, {
         name: payload?.user?.name,
         email: payload?.user?.email,
         createdAt: payload?.user?.createdAt,
@@ -255,7 +255,7 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
         ...experimentProperties,
       });
       if (isRegister) {
-        trackMixpanelEvent("sign_up_completed", {
+        await trackAnalyticsEvent("sign_up_completed", {
           sign_up_method: "email",
           platform: "web",
           auth_mode: mode,
@@ -264,7 +264,7 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
           experiment_variant: copyVariant,
         });
       } else {
-        trackMixpanelEvent("log_in_completed", {
+        await trackAnalyticsEvent("log_in_completed", {
           login_method: "email",
           platform: "web",
           auth_mode: mode,
@@ -408,7 +408,7 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
             className="accent-gradient"
             data-auth-secondary-action={isRegister ? "login" : "register"}
             onClick={() => {
-              trackMixpanelEvent("auth_mode_switched", {
+              trackAnalyticsEvent("auth_mode_switched", {
                 from_auth_mode: mode,
                 to_auth_mode: isRegister ? "login" : "register",
                 page_path: pathname,

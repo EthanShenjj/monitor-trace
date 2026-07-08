@@ -1,10 +1,10 @@
 "use client";
 
 import { useApp } from '@/context/AppContext';
+import { identifyAnalyticsUser, resetAnalytics, trackAnalyticsEvent } from '@/lib/analytics';
 import { identifyAmplitudeUser } from '@/lib/amplitude';
-import { identifyMixpanelUser, resetMixpanel, trackMixpanelEvent } from '@/lib/mixpanel';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 type TopNavUser = {
   id: string;
@@ -16,20 +16,21 @@ type TopNavUser = {
 export default function TopNav({ user }: { user: TopNavUser }) {
   const { theme, toggleTheme, locale, toggleLocale, t } = useApp();
   const router = useRouter();
+  const [selectedProject, setSelectedProject] = useState('Customer Support Agent');
 
   useEffect(() => {
     identifyAmplitudeUser(user.id);
-    identifyMixpanelUser(user.id, user);
+    identifyAnalyticsUser(user.id, user);
   }, [user]);
 
   const handleLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
-      trackMixpanelEvent('log_out_completed', {
+      trackAnalyticsEvent('log_out_completed', {
         platform: 'web',
       });
     } finally {
-      resetMixpanel();
+      resetAnalytics();
       router.replace('/login');
       router.refresh();
     }
@@ -40,9 +41,15 @@ export default function TopNav({ user }: { user: TopNavUser }) {
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
         <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{t('project')}:</span>
         <select
+          value={selectedProject}
           onChange={(event) => {
-            trackMixpanelEvent('project_selected', {
-              project_name: event.target.value,
+            const previousProjectName = selectedProject;
+            const nextProjectName = event.target.value;
+
+            setSelectedProject(nextProjectName);
+            trackAnalyticsEvent('project_selected', {
+              project_name: nextProjectName,
+              previous_project_name: previousProjectName,
               platform: 'web',
             });
           }}
@@ -76,7 +83,7 @@ export default function TopNav({ user }: { user: TopNavUser }) {
         <button
           className="btn btn-outline"
           onClick={() => {
-            trackMixpanelEvent('docs_clicked', {
+            trackAnalyticsEvent('docs_clicked', {
               source: 'top_nav',
               platform: 'web',
             });

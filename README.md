@@ -110,31 +110,47 @@ npm run simulate:auth-ab -- --send --country "China" --city "Shanghai" --region 
 
 For easier chart grouping, the same synthetic identity and geo fields are mirrored into event properties and user properties, including `synthetic_user_id`, `synthetic_device_id`, `city`, `country`, and `region`.
 
-## Mixpanel Quick Start
+## Product Analytics Quick Start
 
-This app also sends product analytics to Mixpanel through the browser SDK. Set the project token in `.env.local` or the deployment environment:
+This app sends product analytics through the shared helpers in `src/lib/analytics.ts`. The helpers currently report browser events to Mixpanel and ThinkingData. Set the project tokens in `.env.local` or the deployment environment:
 
 ```bash
 NEXT_PUBLIC_MIXPANEL_TOKEN="715809b4480606c6237f5ffde5c246b4"
 NEXT_PUBLIC_MIXPANEL_RECORD_SESSIONS_PERCENT="100"
+NEXT_PUBLIC_THINKINGDATA_APP_ID="..."
+NEXT_PUBLIC_THINKINGDATA_SERVER_URL="https://ta-preview.thinkingdata.cn"
+THINKINGDATA_APP_ID="..."
+THINKINGDATA_SERVER_URL="https://ta-preview.thinkingdata.cn"
 ```
 
-Mixpanel is initialized once in `src/lib/mixpanel.ts`. Feature code should use the shared helpers from that file instead of importing `mixpanel-browser` directly.
+Mixpanel is initialized once in `src/lib/mixpanel.ts`; ThinkingData browser analytics are initialized in `src/lib/thinkingdata.ts`; server-side webhook events use `thinkingdata-node` through `src/lib/serverAnalytics.mjs`. Feature code should use `trackAnalyticsEvent`, `identifyAnalyticsUser`, and `resetAnalytics` instead of importing analytics SDKs directly.
 Session Replay is enabled from the same Mixpanel initialization. Start with `100` while verifying replay capture, then lower the sample rate for production traffic.
 
-Current Mixpanel tracking plan:
+Current product tracking plan:
 
 - Auth funnel: `auth_page_viewed`, `auth_form_submitted`, `auth_form_failed`, `auth_mode_switched`, `sign_up_completed`, `log_in_completed`, `log_out_completed`.
-- Dashboard usage: `dashboard_viewed`, `report_download_requested`, `activity_metric_selected`.
-- Payment simulation: `payment_simulated`.
-- Trace usage: `trace_list_opened`, `trace_list_viewed`, `trace_searched`, `trace_filter_clicked`, `trace_opened`, `trace_viewed`.
+- Dashboard usage: `dashboard_viewed`, `report_download_requested`, `activity_metric_selected`, `sidebar_nav_clicked`.
+- Payment simulation: `payment_random_amount_clicked`, `payment_simulated`, `payment_failed`.
+- Trace usage: `trace_list_opened`, `trace_list_viewed`, `trace_searched`, `trace_filter_clicked`, `trace_opened`, `trace_viewed`, `trace_detail_back_clicked`.
+- Message center usage: `message_center_viewed`, `message_opened`, `message_marked_read`, `message_load_failed`, `message_mark_read_failed`.
 - Global navigation and preferences: `project_selected`, `theme_changed`, `language_changed`, `docs_clicked`.
+- Diagnostics: `analytics_config_loaded`, `session_replay_sampled`, `api_request_failed`, `webhook_message_received`.
 
 Identity rules:
 
 - `identify` runs after successful login/signup and when a logged-in protected session opens.
 - `reset` runs on logout.
 - The Mixpanel distinct ID is the internal user ID, not the user's email.
+
+## Webhook Message Center
+
+Set a server-only secret before receiving webhook pushes:
+
+```bash
+WEBHOOK_SECRET="replace-with-a-long-random-secret"
+```
+
+External systems can push JSON messages to `/api/webhooks/messages` with either `Authorization: Bearer <WEBHOOK_SECRET>` or `x-webhook-secret: <WEBHOOK_SECRET>`. The app stores webhook messages in the local SQLite store and shows them on `/messages` for logged-in users.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

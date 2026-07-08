@@ -16,7 +16,9 @@
     "mixpanel-browser": "^2.80.0",
     "next": "16.2.6",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "thinkingdata-browser": "^2.5.0",
+    "thinkingdata-node": "^1.5.0"
   },
   "devDependencies": {
     "@types/node": "^20",
