@@ -26,11 +26,11 @@ export async function GET() {
       thinkingDataAppId:
         process.env.NEXT_PUBLIC_THINKINGDATA_APP_ID ||
         process.env.THINKINGDATA_APP_ID ||
-        null,
+        "267ce4dd64dd4e4583646a62a46a2bf2",
       thinkingDataServerUrl:
         process.env.NEXT_PUBLIC_THINKINGDATA_SERVER_URL ||
         process.env.THINKINGDATA_SERVER_URL ||
-        "https://receiver-ta-preview.thinkingdata.cn",
+        "https://web-ta-demo.thinkingdata.cn/",
     },
     {
       headers: {

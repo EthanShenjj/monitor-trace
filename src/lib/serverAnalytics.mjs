@@ -3,7 +3,8 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const ThinkingData = require("thinkingdata-node");
 
-const DEFAULT_THINKINGDATA_SERVER_URL = "https://receiver-ta-preview.thinkingdata.cn";
+const DEFAULT_THINKINGDATA_APP_ID = "267ce4dd64dd4e4583646a62a46a2bf2";
+const DEFAULT_THINKINGDATA_SERVER_URL = "https://web-ta-demo.thinkingdata.cn/";
 
 let serverSdk = null;
 let serverSdkKey = "";
@@ -21,11 +22,8 @@ function cleanProperties(properties = {}) {
 function getThinkingDataConfig() {
   const appId =
     asNonEmptyString(process.env.THINKINGDATA_APP_ID) ||
-    asNonEmptyString(process.env.NEXT_PUBLIC_THINKINGDATA_APP_ID);
-
-  if (!appId) {
-    return null;
-  }
+    asNonEmptyString(process.env.NEXT_PUBLIC_THINKINGDATA_APP_ID) ||
+    DEFAULT_THINKINGDATA_APP_ID;
 
   return {
     appId,

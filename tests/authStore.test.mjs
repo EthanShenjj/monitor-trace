@@ -13,6 +13,11 @@ import {
   normalizeWebhookItems,
 } from "../src/lib/thinkingdataWebhook.mjs";
 import { handleWebhookMessages } from "../src/lib/webhookMessages.mjs";
+import {
+  normalizeWebhookPushRequest,
+  sendWebhookPush,
+} from "../src/lib/webhookPush.mjs";
+import { buildOneSignalClickMessageInput } from "../src/lib/onesignalWebhook.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -423,4 +428,164 @@ test("listWebhookMessages and markWebhookMessageRead track unread state", async 
     assert.equal(afterRead.messages.length, 1);
     assert.equal(afterRead.messages[0].externalId, "delivery-2");
   });
+});
+
+test("webhook push helpers validate requests and use POST JSON delivery", async () => {
+  assert.throws(
+    () =>
+      normalizeWebhookPushRequest({
+        targetUrl: "ftp://example.com/webhook",
+        payload: {},
+      }),
+    /HTTP or HTTPS/
+  );
+
+  let capturedRequest;
+  const result = await sendWebhookPush(
+    {
+      name: "Billing alert",
+      targetUrl: "https://example.com/webhook",
+      headers: {
+        "X-Test": "ok",
+        "Content-Length": "999",
+      },
+      payload: {
+        event: "invoice.failed",
+      },
+    },
+    {
+      fetcher: async (url, options) => {
+        capturedRequest = { url, options };
+        return {
+          ok: true,
+          status: 202,
+          statusText: "Accepted",
+          text: async () => '{"accepted":true}',
+        };
+      },
+    }
+  );
+
+  assert.equal(capturedRequest.url, "https://example.com/webhook");
+  assert.equal(capturedRequest.options.method, "POST");
+  assert.equal(capturedRequest.options.headers["X-Test"], "ok");
+  assert.equal(capturedRequest.options.headers["Content-Length"], undefined);
+  assert.equal(capturedRequest.options.body, '{"event":"invoice.failed"}');
+  assert.equal(result.status, "succeeded");
+  assert.equal(result.statusCode, 202);
+  assert.equal(result.responseBody, '{"accepted":true}');
+});
+
+test("recordWebhookPushAttempt stores outbound webhook delivery history", async () => {
+  await withStore(async (store, dbPath) => {
+    const user = await store.registerUser({
+      name: "Webhook Operator",
+      email: "webhooks@example.com",
+      password: "StrongPass123",
+    });
+
+    const attempt = await store.recordWebhookPushAttempt({
+      userId: user.id,
+      name: "Trace alert",
+      targetUrl: "https://example.com/webhook",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      payload: {
+        event: "trace.alert",
+      },
+      status: "succeeded",
+      statusCode: 204,
+      responseBody: "",
+      durationMs: 12,
+      source: "webhook_push_page",
+    });
+
+    assert.ok(attempt.id);
+    assert.equal(attempt.userId, user.id);
+    assert.equal(attempt.targetUrl, "https://example.com/webhook");
+    assert.equal(attempt.headers["Content-Type"], "application/json");
+    assert.equal(attempt.payload.event, "trace.alert");
+    assert.equal(attempt.status, "succeeded");
+    assert.equal(attempt.statusCode, 204);
+    assert.equal(attempt.durationMs, 12);
+
+    const listed = await store.listWebhookPushAttempts({ userId: user.id });
+    assert.equal(listed.attempts.length, 1);
+    assert.equal(listed.attempts[0].id, attempt.id);
+    assert.equal(listed.attempts[0].payload.event, "trace.alert");
+
+    const rows = await querySqlite(
+      dbPath,
+      "select user_id, name, target_url, status, status_code, duration_ms from webhook_push_attempts"
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].user_id, user.id);
+    assert.equal(rows[0].name, "Trace alert");
+    assert.equal(rows[0].target_url, "https://example.com/webhook");
+    assert.equal(rows[0].status, "succeeded");
+    assert.equal(rows[0].status_code, 204);
+    assert.equal(rows[0].duration_ms, 12);
+  });
+});
+
+test("OneSignal click webhook helper normalizes notification.clicked payloads", async () => {
+  const input = buildOneSignalClickMessageInput({
+    event: "notification.clicked",
+    notificationId: "notif_123",
+    heading: "Daily reward",
+    content: "Open the app to claim coins",
+    actionId: "claim",
+    subscriptionId: "sub_456",
+    url: "https://example.com/rewards",
+    additionalData: {
+      user_id: "user_789",
+      campaign_id: "camp_101",
+    },
+  });
+
+  assert.equal(input.provider, "onesignal");
+  assert.equal(input.externalId, "notif_123:claim:sub_456");
+  assert.equal(input.eventType, "notification.clicked");
+  assert.equal(input.title, "Daily reward");
+  assert.match(input.body, /Open the app to claim coins/);
+  assert.match(input.body, /Action: claim/);
+  assert.equal(input.analytics.notificationId, "notif_123");
+  assert.equal(input.analytics.actionId, "claim");
+  assert.equal(input.analytics.subscriptionId, "sub_456");
+  assert.equal(input.analytics.userId, "user_789");
+  assert.equal(input.analytics.campaignId, "camp_101");
+});
+
+test("OneSignal click webhook messages are stored and deduplicated", async () => {
+  await withStore(async (store) => {
+    const input = buildOneSignalClickMessageInput({
+      event: "notification.clicked",
+      notificationId: "notif_abc",
+      heading: "Welcome back",
+      content: "Tap to continue",
+      subscriptionId: "sub_def",
+    });
+
+    const created = await store.createWebhookMessage(input);
+    const duplicate = await store.createWebhookMessage(input);
+
+    assert.equal(created.duplicate, false);
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(duplicate.message.id, created.message.id);
+    assert.equal(created.message.provider, "onesignal");
+    assert.equal(created.message.eventType, "notification.clicked");
+    assert.equal(created.message.externalId, "notif_abc:body:sub_def");
+  });
+});
+
+test("OneSignal helper rejects non-click events", () => {
+  assert.throws(
+    () =>
+      buildOneSignalClickMessageInput({
+        event: "notification.displayed",
+        notificationId: "notif_123",
+      }),
+    /notification.clicked/
+  );
 });

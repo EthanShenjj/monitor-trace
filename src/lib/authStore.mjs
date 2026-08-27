@@ -244,6 +244,107 @@ function publicWebhookMessage(message) {
   };
 }
 
+function normalizeJsonColumn(value, fallback) {
+  if (value === undefined || value === null) {
+    return JSON.stringify(fallback);
+  }
+
+  if (typeof value === "string") {
+    try {
+      JSON.parse(value);
+      return value;
+    } catch {
+      return JSON.stringify(fallback);
+    }
+  }
+
+  return JSON.stringify(value);
+}
+
+function parseJsonColumn(value, fallback) {
+  try {
+    return JSON.parse(value || "");
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeWebhookPushAttempt(input = {}) {
+  const cleanUserId = toNullableString(input.userId);
+  const cleanName = toNullableString(input.name) || "Webhook push";
+  const cleanTargetUrl = toNullableString(input.targetUrl);
+  const cleanSource = toNullableString(input.source) || "webhook_push_page";
+  const cleanStatus = toNullableString(input.status) || "pending";
+  const statusCode =
+    input.statusCode === undefined || input.statusCode === null
+      ? null
+      : Number.parseInt(String(input.statusCode), 10);
+  const durationMs =
+    input.durationMs === undefined || input.durationMs === null
+      ? null
+      : Number.parseInt(String(input.durationMs), 10);
+  const responseBody = input.responseBody === undefined || input.responseBody === null
+    ? null
+    : String(input.responseBody).slice(0, 12000);
+  const errorMessage = input.errorMessage === undefined || input.errorMessage === null
+    ? null
+    : String(input.errorMessage).slice(0, 1000);
+
+  if (!cleanUserId) {
+    throw new Error("User is required");
+  }
+  if (!cleanTargetUrl) {
+    throw new Error("Target URL is required");
+  }
+  if (cleanName.length > 120) {
+    throw new Error("Webhook name is too long");
+  }
+  if (cleanTargetUrl.length > 2000) {
+    throw new Error("Target URL is too long");
+  }
+  if (!["pending", "succeeded", "failed"].includes(cleanStatus)) {
+    throw new Error("Webhook push status is invalid");
+  }
+  if (statusCode !== null && (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599)) {
+    throw new Error("Webhook response status code is invalid");
+  }
+  if (durationMs !== null && (!Number.isInteger(durationMs) || durationMs < 0)) {
+    throw new Error("Webhook duration is invalid");
+  }
+
+  return {
+    userId: cleanUserId,
+    name: cleanName,
+    targetUrl: cleanTargetUrl,
+    headersJson: normalizeJsonColumn(input.headers, {}),
+    payloadJson: normalizeJsonColumn(input.payload, {}),
+    status: cleanStatus,
+    statusCode,
+    responseBody,
+    errorMessage,
+    durationMs,
+    source: cleanSource,
+  };
+}
+
+function publicWebhookPushAttempt(attempt) {
+  return {
+    id: attempt.id,
+    userId: attempt.userId || attempt.user_id,
+    name: attempt.name,
+    targetUrl: attempt.targetUrl || attempt.target_url,
+    headers: parseJsonColumn(attempt.headersJson || attempt.headers_json, {}),
+    payload: parseJsonColumn(attempt.payloadJson || attempt.payload_json, {}),
+    status: attempt.status,
+    statusCode: attempt.statusCode ?? attempt.status_code ?? null,
+    responseBody: attempt.responseBody || attempt.response_body || null,
+    errorMessage: attempt.errorMessage || attempt.error_message || null,
+    durationMs: attempt.durationMs ?? attempt.duration_ms ?? null,
+    source: attempt.source,
+    createdAt: attempt.createdAt || attempt.created_at,
+  };
+}
+
 export function createAuthStore({ dbPath, filePath, sessionSecret }) {
   const databasePath = dbPath || filePath;
 
@@ -305,6 +406,23 @@ export function createAuthStore({ dbPath, filePath, sessionSecret }) {
           read_at TEXT,
           created_at TEXT NOT NULL,
           UNIQUE(provider, external_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS webhook_push_attempts (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          target_url TEXT NOT NULL,
+          headers_json TEXT NOT NULL,
+          payload_json TEXT NOT NULL,
+          status TEXT NOT NULL,
+          status_code INTEGER,
+          response_body TEXT,
+          error_message TEXT,
+          duration_ms INTEGER,
+          source TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users(id)
         );
       `);
     }
@@ -640,6 +758,108 @@ export function createAuthStore({ dbPath, filePath, sessionSecret }) {
         .get(cleanId);
 
       return publicWebhookMessage(message);
+    },
+
+    async recordWebhookPushAttempt(input) {
+      const clean = normalizeWebhookPushAttempt(input);
+      const database = getDb();
+
+      if (!database.prepare("SELECT 1 FROM users WHERE id = ?").get(clean.userId)) {
+        throw new Error("User not found");
+      }
+
+      const now = new Date().toISOString();
+      const attempt = {
+        id: randomUUID(),
+        userId: clean.userId,
+        name: clean.name,
+        targetUrl: clean.targetUrl,
+        headersJson: clean.headersJson,
+        payloadJson: clean.payloadJson,
+        status: clean.status,
+        statusCode: clean.statusCode,
+        responseBody: clean.responseBody,
+        errorMessage: clean.errorMessage,
+        durationMs: clean.durationMs,
+        source: clean.source,
+        createdAt: now,
+      };
+
+      database
+        .prepare(
+          `
+            INSERT INTO webhook_push_attempts (
+              id,
+              user_id,
+              name,
+              target_url,
+              headers_json,
+              payload_json,
+              status,
+              status_code,
+              response_body,
+              error_message,
+              duration_ms,
+              source,
+              created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `
+        )
+        .run(
+          attempt.id,
+          attempt.userId,
+          attempt.name,
+          attempt.targetUrl,
+          attempt.headersJson,
+          attempt.payloadJson,
+          attempt.status,
+          attempt.statusCode,
+          attempt.responseBody,
+          attempt.errorMessage,
+          attempt.durationMs,
+          attempt.source,
+          attempt.createdAt
+        );
+
+      return publicWebhookPushAttempt(attempt);
+    },
+
+    async listWebhookPushAttempts({ userId, limit = 50 } = {}) {
+      const cleanUserId = toNullableString(userId);
+
+      if (!cleanUserId) {
+        throw new Error("User is required");
+      }
+
+      const cleanLimit = Math.min(100, Math.max(1, Number.parseInt(String(limit), 10) || 50));
+      const attempts = getDb()
+        .prepare(
+          `
+            SELECT
+              id,
+              user_id,
+              name,
+              target_url,
+              headers_json,
+              payload_json,
+              status,
+              status_code,
+              response_body,
+              error_message,
+              duration_ms,
+              source,
+              created_at
+            FROM webhook_push_attempts
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+          `
+        )
+        .all(cleanUserId, cleanLimit)
+        .map(publicWebhookPushAttempt);
+
+      return { attempts };
     },
 
     createSessionToken(userId) {

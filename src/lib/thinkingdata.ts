@@ -27,7 +27,8 @@ type ThinkingDataUserProfile = {
   createdAt?: unknown;
 };
 
-const defaultServerUrl = "https://receiver-ta-preview.thinkingdata.cn";
+const defaultAppId = "267ce4dd64dd4e4583646a62a46a2bf2";
+const defaultServerUrl = "https://web-ta-demo.thinkingdata.cn/";
 const appIdFromEnv = process.env.NEXT_PUBLIC_THINKINGDATA_APP_ID;
 const serverUrlFromEnv = process.env.NEXT_PUBLIC_THINKINGDATA_SERVER_URL;
 const configLoadedKey = "monitor_thinkingdata_config_loaded";
@@ -164,7 +165,7 @@ export async function initThinkingData() {
   if (!initPromise) {
     initPromise = (async () => {
       const runtimeConfig = await getRuntimeConfig();
-      const appId = asNonEmptyString(appIdFromEnv) || runtimeConfig.thinkingDataAppId;
+      const appId = asNonEmptyString(appIdFromEnv) || runtimeConfig.thinkingDataAppId || defaultAppId;
       const serverUrl =
         asNonEmptyString(serverUrlFromEnv) ||
         runtimeConfig.thinkingDataServerUrl ||
