@@ -1,13 +1,13 @@
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const ThinkingData = require("thinkingdata-node");
 
 const DEFAULT_THINKINGDATA_APP_ID = "267ce4dd64dd4e4583646a62a46a2bf2";
 const DEFAULT_THINKINGDATA_SERVER_URL = "https://web-ta-demo.thinkingdata.cn/";
 
 let serverSdk = null;
 let serverSdkKey = "";
+let thinkingDataModule = undefined;
 
 function asNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
@@ -36,8 +36,9 @@ function getThinkingDataConfig() {
 
 function getServerSdk() {
   const config = getThinkingDataConfig();
+  const ThinkingData = getThinkingDataModule();
 
-  if (!config) {
+  if (!config || !ThinkingData) {
     return null;
   }
 
@@ -53,6 +54,20 @@ function getServerSdk() {
   }
 
   return serverSdk;
+}
+
+function getThinkingDataModule() {
+  if (thinkingDataModule !== undefined) {
+    return thinkingDataModule;
+  }
+
+  try {
+    thinkingDataModule = require("thinkingdata-node");
+  } catch {
+    thinkingDataModule = null;
+  }
+
+  return thinkingDataModule;
 }
 
 export async function trackServerThinkingDataEvent(
