@@ -898,7 +898,7 @@ export function getDefaultAuthStore() {
     dbPath:
       process.env.AUTH_DB_PATH ||
       process.env.AUTH_STORE_PATH ||
-      path.join(process.cwd(), ".data", "auth.sqlite"),
+      path.join(process.env.VERCEL ? "/tmp" : process.cwd(), ".data", "auth.sqlite"),
     sessionSecret:
       process.env.AUTH_SESSION_SECRET ||
       "monitor-trace-local-development-secret",
