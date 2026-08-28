@@ -16,6 +16,8 @@ type OneSignalSdk = {
     isPushSupported?: () => Promise<boolean> | boolean;
   };
   User?: {
+    externalId?: string | null;
+    onesignalId?: string | null;
     PushSubscription?: {
       id?: string | null;
       token?: string | null;
@@ -59,6 +61,8 @@ export type OneSignalSubscriptionStatus = {
   permission: NotificationPermission | "unsupported";
   subscriptionId: string | null;
   optedIn: boolean;
+  externalId: string | null;
+  oneSignalUserId: string | null;
   error?: string | null;
 };
 
@@ -115,6 +119,13 @@ function hasActiveOneSignalSubscription(oneSignal: OneSignalSdk) {
   const pushSubscription = oneSignal.User?.PushSubscription;
 
   return Boolean(pushSubscription?.id && pushSubscription.optedIn);
+}
+
+function getCurrentOneSignalUser(oneSignal: OneSignalSdk | null) {
+  return {
+    externalId: oneSignal?.User?.externalId || null,
+    oneSignalUserId: oneSignal?.User?.onesignalId || null,
+  };
 }
 
 function waitForActiveOneSignalSubscription(oneSignal: OneSignalSdk, timeoutMs: number) {
@@ -305,6 +316,8 @@ export async function requestOneSignalPushPermission(): Promise<OneSignalPermiss
         permission: "unsupported",
         subscriptionId: null,
         optedIn: false,
+        externalId: null,
+        oneSignalUserId: null,
       },
       error: "This browser does not support web push notifications",
     };
@@ -318,6 +331,8 @@ export async function requestOneSignalPushPermission(): Promise<OneSignalPermiss
         permission: Notification.permission,
         subscriptionId: null,
         optedIn: false,
+        externalId: null,
+        oneSignalUserId: null,
       },
       error: "OneSignal app id is not configured",
     };
@@ -364,6 +379,8 @@ export async function requestOneSignalPushPermission(): Promise<OneSignalPermiss
         permission: typeof Notification === "undefined" ? "unsupported" : Notification.permission,
         subscriptionId: null,
         optedIn: false,
+        externalId: null,
+        oneSignalUserId: null,
         error: getOneSignalWindow().__monitorTraceOneSignalLastError || "OneSignal SDK did not load",
       },
       error: getOneSignalWindow().__monitorTraceOneSignalLastError || "OneSignal SDK did not load",
@@ -416,6 +433,8 @@ export async function getOneSignalSubscriptionStatus(): Promise<OneSignalSubscri
       permission: "unsupported",
       subscriptionId: null,
       optedIn: false,
+      externalId: null,
+      oneSignalUserId: null,
     };
   }
 
@@ -425,6 +444,8 @@ export async function getOneSignalSubscriptionStatus(): Promise<OneSignalSubscri
       permission: Notification.permission,
       subscriptionId: null,
       optedIn: false,
+      externalId: null,
+      oneSignalUserId: null,
     };
   }
 
@@ -434,16 +455,22 @@ export async function getOneSignalSubscriptionStatus(): Promise<OneSignalSubscri
       permission: Notification.permission,
       subscriptionId: null,
       optedIn: false,
+      externalId: null,
+      oneSignalUserId: null,
     };
   }
 
   const oneSignal = await initOneSignal();
+  const currentUser = getCurrentOneSignalUser(oneSignal);
+
   if (!oneSignal) {
     return {
       state: "sdk_unavailable",
       permission: Notification.permission,
       subscriptionId: null,
       optedIn: false,
+      externalId: currentUser.externalId,
+      oneSignalUserId: currentUser.oneSignalUserId,
       error: getOneSignalWindow().__monitorTraceOneSignalLastError || "OneSignal SDK did not load",
     };
   }
@@ -457,5 +484,7 @@ export async function getOneSignalSubscriptionStatus(): Promise<OneSignalSubscri
     permission: Notification.permission,
     subscriptionId,
     optedIn,
+    externalId: currentUser.externalId,
+    oneSignalUserId: currentUser.oneSignalUserId,
   };
 }

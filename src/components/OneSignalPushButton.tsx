@@ -18,6 +18,8 @@ const initialStatus: OneSignalSubscriptionStatus = {
   permission: "default",
   subscriptionId: null,
   optedIn: false,
+  externalId: null,
+  oneSignalUserId: null,
 };
 
 function getButtonLabel(status: OneSignalSubscriptionStatus, locale: "zh" | "en") {
@@ -51,6 +53,10 @@ function getTitle(status: OneSignalSubscriptionStatus, locale: "zh" | "en") {
     return `OneSignal subscription: ${status.subscriptionId}`;
   }
 
+  if (status.externalId) {
+    return `OneSignal External ID: ${status.externalId}`;
+  }
+
   return locale === "zh"
     ? "允许浏览器通知后，OneSignal 会创建一个可测试的 Web Push 订阅。"
     : "Allow browser notifications to create a testable OneSignal Web Push subscription.";
@@ -61,18 +67,27 @@ export default function OneSignalPushButton({ userId, locale }: OneSignalPushBut
   const [isLoading, setIsLoading] = useState(true);
   const [feedback, setFeedback] = useState<string | null>(null);
 
+  const externalIdSynced = status.externalId === userId;
+
   useEffect(() => {
     let isActive = true;
 
     async function syncStatus() {
       setIsLoading(true);
       setFeedback(null);
-      await identifyOneSignalUser(userId);
+      const identified = await identifyOneSignalUser(userId);
       const nextStatus = await getOneSignalSubscriptionStatus();
 
       if (isActive) {
         setStatus(nextStatus);
-        setFeedback(nextStatus.error || null);
+        setFeedback(
+          nextStatus.error ||
+            (nextStatus.externalId === userId || identified
+              ? locale === "zh"
+                ? "External ID 已同步"
+                : "External ID synced"
+              : null)
+        );
         setIsLoading(false);
       }
     }
@@ -82,7 +97,7 @@ export default function OneSignalPushButton({ userId, locale }: OneSignalPushBut
     return () => {
       isActive = false;
     };
-  }, [userId]);
+  }, [locale, userId]);
 
   const handleClick = async () => {
     if (status.state === "unsupported" || status.state === "missing_app_id" || status.state === "blocked") {
@@ -91,18 +106,24 @@ export default function OneSignalPushButton({ userId, locale }: OneSignalPushBut
     }
 
     setIsLoading(true);
+    setFeedback(locale === "zh" ? "正在同步 External ID" : "Syncing External ID");
+    await identifyOneSignalUser(userId);
     setFeedback(locale === "zh" ? "等待浏览器授权" : "Waiting for permission");
     const result = await requestOneSignalPushPermission();
-    if (result.ok) {
-      await identifyOneSignalUser(userId);
-    }
-    setStatus(result.status);
+    await identifyOneSignalUser(userId);
+    const nextStatus = await getOneSignalSubscriptionStatus();
+
+    setStatus(nextStatus);
     setFeedback(
       result.ok
         ? locale === "zh"
           ? "推送订阅成功"
           : "Push subscribed"
-        : result.error || result.status.error || (locale === "zh" ? "推送未启用" : "Push not enabled")
+        : nextStatus.externalId === userId
+          ? locale === "zh"
+            ? "External ID 已同步，推送订阅未启用"
+            : "External ID synced, push not enabled"
+          : result.error || result.status.error || (locale === "zh" ? "推送未启用" : "Push not enabled")
     );
     setIsLoading(false);
   };
@@ -129,7 +150,7 @@ export default function OneSignalPushButton({ userId, locale }: OneSignalPushBut
       {feedback ? (
         <span
           style={{
-            color: status.state === "subscribed" ? "var(--status-success)" : "var(--text-secondary)",
+            color: status.state === "subscribed" || externalIdSynced ? "var(--status-success)" : "var(--text-secondary)",
             fontSize: "0.75rem",
             lineHeight: 1.2,
             maxWidth: "12rem",
@@ -137,6 +158,20 @@ export default function OneSignalPushButton({ userId, locale }: OneSignalPushBut
           }}
         >
           {feedback}
+        </span>
+      ) : null}
+      {status.externalId ? (
+        <span
+          style={{
+            color: "var(--text-muted)",
+            fontSize: "0.68rem",
+            lineHeight: 1.2,
+            maxWidth: "12rem",
+            overflowWrap: "anywhere",
+            textAlign: "right",
+          }}
+        >
+          External ID: {status.externalId}
         </span>
       ) : null}
     </div>
