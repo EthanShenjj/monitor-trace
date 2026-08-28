@@ -126,6 +126,33 @@ THINKINGDATA_SERVER_URL="https://web-ta-demo.thinkingdata.cn/"
 Mixpanel is initialized once in `src/lib/mixpanel.ts`; ThinkingData browser analytics are initialized in `src/lib/thinkingdata.ts`; server-side webhook events use `thinkingdata-node` through `src/lib/serverAnalytics.mjs`. Feature code should use `trackAnalyticsEvent`, `identifyAnalyticsUser`, and `resetAnalytics` instead of importing analytics SDKs directly.
 Session Replay is enabled from the same Mixpanel initialization. Start with `100` while verifying replay capture, then lower the sample rate for production traffic.
 
+## OneSignal Web Push
+
+The app loads the OneSignal Web SDK from the official CDN and serves the required service worker files from `public/`:
+
+- `/OneSignalSDKWorker.js`
+- `/OneSignalSDKUpdaterWorker.js`
+
+Set the OneSignal app ID in `.env.local` or the deployment environment:
+
+```bash
+NEXT_PUBLIC_ONESIGNAL_APP_ID="dbb8017a-3495-402d-9094-e408bd1d6e27"
+ONESIGNAL_APP_ID="dbb8017a-3495-402d-9094-e408bd1d6e27"
+ONESIGNAL_REST_API_KEY="..."
+ONESIGNAL_PROXY_SECRET="optional-shared-secret"
+ONESIGNAL_DEFAULT_LAUNCH_URL="https://monitor-trace.vercel.app/messages"
+```
+
+Logged-in users see an Enable push button in the top navigation. Clicking it asks the browser for notification permission, creates a Web Push subscription in OneSignal, and associates that subscription with the internal user ID through `OneSignal.login(user.id)`. CSV imports can add or update contact data, but browser push subscriptions must be created by the browser after notification permission is granted.
+
+Hermes should send operation webhooks to this server-side proxy instead of calling OneSignal directly:
+
+```text
+https://monitor-trace.vercel.app/api/webhooks/onesignal/push
+```
+
+If `ONESIGNAL_PROXY_SECRET` is set, pass it as the `x-webhook-secret` header or `?secret=...` query parameter. The proxy accepts Hermes' array body, maps `push_id` / `external_id` to OneSignal `include_aliases.external_id`, adds `target_channel: "push"`, and forwards a top-level Create Message JSON object to OneSignal with `Authorization: Key <ONESIGNAL_REST_API_KEY>`.
+
 Current product tracking plan:
 
 - Auth funnel: `auth_page_viewed`, `auth_form_submitted`, `auth_form_failed`, `auth_mode_switched`, `sign_up_completed`, `log_in_completed`, `log_out_completed`.

@@ -3,8 +3,10 @@
 import { useApp } from '@/context/AppContext';
 import { identifyAnalyticsUser, resetAnalytics, trackAnalyticsEvent } from '@/lib/analytics';
 import { identifyAmplitudeUser } from '@/lib/amplitude';
+import { resetOneSignalUser } from '@/lib/onesignal';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import OneSignalPushButton from './OneSignalPushButton';
 
 type TopNavUser = {
   id: string;
@@ -30,6 +32,7 @@ export default function TopNav({ user }: { user: TopNavUser }) {
         platform: 'web',
       });
     } finally {
+      await resetOneSignalUser();
       resetAnalytics();
       router.replace('/login?logged_out=1');
       router.refresh();
@@ -92,6 +95,7 @@ export default function TopNav({ user }: { user: TopNavUser }) {
         >
           {t('docs')}
         </button>
+        <OneSignalPushButton userId={user.id} locale={locale} />
         <button className="btn btn-outline" onClick={handleLogout} style={{ padding: '0.5rem 1rem' }}>{t('logout')}</button>
         <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>U</div>
       </div>

@@ -18,6 +18,11 @@ import {
   sendWebhookPush,
 } from "../src/lib/webhookPush.mjs";
 import { buildOneSignalClickMessageInput } from "../src/lib/onesignalWebhook.mjs";
+import {
+  buildOneSignalNotificationPayload,
+  handleOneSignalPushProxy,
+  sendOneSignalNotification,
+} from "../src/lib/onesignalPushProxy.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -527,6 +532,112 @@ test("recordWebhookPushAttempt stores outbound webhook delivery history", async 
     assert.equal(rows[0].status_code, 204);
     assert.equal(rows[0].duration_ms, 12);
   });
+});
+
+test("OneSignal push proxy converts Hermes webhook arrays to Create Message payloads", () => {
+  const payload = buildOneSignalNotificationPayload(
+    {
+      push_id: "accountid123987001",
+      params: {
+        title: "每日活动",
+        content: "你好张三，快来参加活动吧！",
+        url: "https://monitor-trace.vercel.app/messages",
+      },
+      custom_params: {
+        campaign: "daily",
+      },
+      "#ops_receipt_properties": {
+        ops_task_id: "0050",
+        ops_request_id: "f7b66eb7-3363-4a46-a402-601a64b45f76",
+      },
+    },
+    {
+      appId: "dbb8017a-3495-402d-9094-e408bd1d6e27",
+    }
+  );
+
+  assert.equal(payload.app_id, "dbb8017a-3495-402d-9094-e408bd1d6e27");
+  assert.equal(payload.target_channel, "push");
+  assert.deepEqual(payload.include_aliases.external_id, ["accountid123987001"]);
+  assert.equal(payload.headings.en, "每日活动");
+  assert.equal(payload.contents.en, "你好张三，快来参加活动吧！");
+  assert.equal(payload.url, "https://monitor-trace.vercel.app/messages");
+  assert.equal(payload.data.campaign, "daily");
+  assert.equal(payload.data["#ops_receipt_properties"].ops_task_id, "0050");
+});
+
+test("OneSignal push proxy sends Authorization header and reports partial failures", async () => {
+  const requests = [];
+  const response = await handleOneSignalPushProxy({
+    body: [
+      {
+        push_id: "user-1",
+        params: {
+          title: "Hello",
+          content: "World",
+        },
+      },
+      {
+        push_id: "user-2",
+        params: {
+          title: "Missing body",
+        },
+      },
+    ],
+    appId: "app-123",
+    apiKey: "rest-key-456",
+    fetcher: async (url, options) => {
+      requests.push({ url, options });
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        text: async () => '{"id":"notif_123"}',
+      };
+    },
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "https://api.onesignal.com/notifications?c=push");
+  assert.equal(requests[0].options.method, "POST");
+  assert.equal(requests[0].options.headers.Authorization, "Key rest-key-456");
+  assert.equal(requests[0].options.headers["Content-Type"], "application/json");
+  assert.equal(JSON.parse(requests[0].options.body).include_aliases.external_id[0], "user-1");
+  assert.equal(response.return_code, 0);
+  assert.equal(response.data.success_list.length, 1);
+  assert.deepEqual(response.data.fail_list, [
+    {
+      index: 2,
+      message: "params.content is required",
+    },
+  ]);
+});
+
+test("OneSignal notification sender requires REST API key", async () => {
+  await assert.rejects(
+    sendOneSignalNotification(
+      {
+        app_id: "app-123",
+        target_channel: "push",
+        include_aliases: {
+          external_id: ["user-1"],
+        },
+        headings: {
+          en: "Hello",
+        },
+        contents: {
+          en: "World",
+        },
+      },
+      {
+        apiKey: "",
+        fetcher: async () => {
+          throw new Error("fetch should not run");
+        },
+      }
+    ),
+    /ONESIGNAL_REST_API_KEY/
+  );
 });
 
 test("OneSignal click webhook helper normalizes notification.clicked payloads", async () => {

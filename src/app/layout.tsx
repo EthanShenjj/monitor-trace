@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 import AmplitudeWebExperiment from "@/components/AmplitudeWebExperiment";
 import { AppProvider } from "@/context/AppContext";
@@ -20,6 +21,10 @@ export default function RootLayout({
           {children}
         </AppProvider>
         <AmplitudeWebExperiment />
+        <Script
+          src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
