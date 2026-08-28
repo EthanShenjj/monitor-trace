@@ -8,22 +8,6 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function hasValidProxySecret(request) {
-  const configuredSecret = process.env.ONESIGNAL_PROXY_SECRET;
-
-  if (!configuredSecret) {
-    return true;
-  }
-
-  const requestUrl = new URL(request.url);
-  const requestSecret =
-    request.headers.get("x-webhook-secret") ||
-    request.headers.get("x-onesignal-proxy-secret") ||
-    requestUrl.searchParams.get("secret");
-
-  return requestSecret === configuredSecret;
-}
-
 function buildOutboundPreview(body, options) {
   try {
     return normalizeOneSignalProxyItems(body).map((item) =>
@@ -87,28 +71,6 @@ async function recordRelayAttempt({
 
 export async function POST(request) {
   const startedAt = Date.now();
-
-  if (!hasValidProxySecret(request)) {
-    const response = {
-      return_code: 1,
-      return_message: "Unauthorized",
-      data: {
-        fail_list: [],
-      },
-    };
-
-    await recordRelayAttempt({
-      body: {},
-      outboundPayload: [],
-      response,
-      status: "unauthorized",
-      statusCode: 401,
-      errorMessage: "Unauthorized",
-      startedAt,
-    });
-
-    return NextResponse.json(response, { status: 401 });
-  }
 
   let body;
 
