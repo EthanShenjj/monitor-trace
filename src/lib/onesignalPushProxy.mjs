@@ -95,7 +95,8 @@ export function buildOneSignalNotificationPayload(item, options = {}) {
     params.message,
     params.text,
     message.content,
-    message.body
+    message.body,
+    title
   );
   const launchUrl = firstString(
     params.url,

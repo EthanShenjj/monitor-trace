@@ -695,6 +695,23 @@ test("OneSignal push proxy converts Hermes webhook arrays to Create Message payl
   assert.equal(payload.data["#ops_receipt_properties"].ops_task_id, "0050");
 });
 
+test("OneSignal push proxy uses title as fallback content for Hermes tests", () => {
+  const payload = buildOneSignalNotificationPayload(
+    {
+      push_id: "accountid123987001",
+      params: {
+        title: "测试标题",
+      },
+    },
+    {
+      appId: "dbb8017a-3495-402d-9094-e408bd1d6e27",
+    }
+  );
+
+  assert.equal(payload.headings.en, "测试标题");
+  assert.equal(payload.contents.en, "测试标题");
+});
+
 test("OneSignal push proxy sends Authorization header and reports partial failures", async () => {
   const requests = [];
   const response = await handleOneSignalPushProxy({
@@ -709,7 +726,7 @@ test("OneSignal push proxy sends Authorization header and reports partial failur
       {
         push_id: "user-2",
         params: {
-          title: "Missing body",
+          content: "Missing title",
         },
       },
     ],
@@ -737,7 +754,7 @@ test("OneSignal push proxy sends Authorization header and reports partial failur
   assert.deepEqual(response.data.fail_list, [
     {
       index: 2,
-      message: "params.content is required",
+      message: "params.title is required",
     },
   ]);
 });
