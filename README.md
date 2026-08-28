@@ -153,6 +153,14 @@ https://monitor-trace.vercel.app/api/webhooks/onesignal/push
 
 If `ONESIGNAL_PROXY_SECRET` is set, pass it as the `x-webhook-secret` header or `?secret=...` query parameter. The proxy accepts Hermes' array body, maps `push_id` / `external_id` to OneSignal `include_aliases.external_id`, adds `target_channel: "push"`, and forwards a top-level Create Message JSON object to OneSignal with `Authorization: Key <ONESIGNAL_REST_API_KEY>`.
 
+Authenticated users can inspect and manage this flow in the Message Relay module:
+
+```text
+/relay
+```
+
+The module lists Hermes inbound payloads, generated OneSignal payloads, OneSignal responses, and relay status. It also manages the active OneSignal relay config through `/api/message-relay/configs`; relay history is exposed through `/api/message-relay/attempts`.
+
 OneSignal Event Streams should post push delivery and engagement callbacks to:
 
 ```text

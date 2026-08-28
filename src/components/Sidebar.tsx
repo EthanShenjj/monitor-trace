@@ -11,6 +11,7 @@ const navItems = [
   { href: '/traces', labelKey: 'traces'    as const, icon: '⋯' },
   { href: '/events', labelKey: 'events'    as const, icon: '✦' },
   { href: '/messages', labelKey: 'messages' as const, icon: '✉' },
+  { href: '/relay',    labelKey: 'relay'    as const, icon: '⇄' },
   { href: '/webhooks', labelKey: 'webhooks' as const, icon: '↗' },
   { href: '#',       labelKey: 'playground'as const, icon: '◈' },
   { href: '#',       labelKey: 'settings'  as const, icon: '⚙' },

@@ -537,6 +537,70 @@ test("recordWebhookPushAttempt stores outbound webhook delivery history", async 
   });
 });
 
+test("message relay configs and attempts can be managed", async () => {
+  await withStore(async (store) => {
+    const savedConfig = await store.upsertMessageRelayConfig({
+      platform: "onesignal",
+      name: "OneSignal production",
+      appId: "app-123",
+      defaultLaunchUrl: "https://example.com/messages",
+      enabled: true,
+    });
+
+    assert.equal(savedConfig.platform, "onesignal");
+    assert.equal(savedConfig.name, "OneSignal production");
+    assert.equal(savedConfig.appId, "app-123");
+    assert.equal(savedConfig.defaultLaunchUrl, "https://example.com/messages");
+    assert.equal(savedConfig.enabled, true);
+
+    const updatedConfig = await store.upsertMessageRelayConfig({
+      platform: "onesignal",
+      name: "OneSignal paused",
+      appId: "app-456",
+      enabled: false,
+    });
+
+    assert.equal(updatedConfig.id, savedConfig.id);
+    assert.equal(updatedConfig.name, "OneSignal paused");
+    assert.equal(updatedConfig.appId, "app-456");
+    assert.equal(updatedConfig.enabled, false);
+
+    const firstAttempt = await store.recordMessageRelayAttempt({
+      platform: "onesignal",
+      source: "hermes",
+      inboundPayload: [{ push_id: "user-1" }],
+      outboundPayload: [{ include_aliases: { external_id: ["user-1"] } }],
+      response: { return_code: 0 },
+      status: "succeeded",
+      statusCode: 200,
+      durationMs: 32,
+    });
+    const secondAttempt = await store.recordMessageRelayAttempt({
+      platform: "onesignal",
+      source: "hermes",
+      inboundPayload: [{ push_id: "missing-user" }],
+      outboundPayload: [],
+      response: { return_code: 1 },
+      status: "failed",
+      statusCode: 502,
+      errorMessage: "push_id or external_id is required",
+    });
+
+    assert.equal(firstAttempt.status, "succeeded");
+    assert.equal(secondAttempt.errorMessage, "push_id or external_id is required");
+
+    const allAttempts = await store.listMessageRelayAttempts({ platform: "onesignal" });
+    assert.equal(allAttempts.attempts.length, 2);
+
+    const failedAttempts = await store.listMessageRelayAttempts({
+      platform: "onesignal",
+      status: "failed",
+    });
+    assert.equal(failedAttempts.attempts.length, 1);
+    assert.equal(failedAttempts.attempts[0].id, secondAttempt.id);
+  });
+});
+
 test("OneSignal push proxy converts Hermes webhook arrays to Create Message payloads", () => {
   const payload = buildOneSignalNotificationPayload(
     {

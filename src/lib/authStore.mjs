@@ -345,6 +345,120 @@ function publicWebhookPushAttempt(attempt) {
   };
 }
 
+function normalizeMessageRelayConfig(input = {}) {
+  const platform = toNullableString(input.platform || "onesignal")?.toLowerCase();
+  const name = toNullableString(input.name) || "OneSignal";
+  const appId = toNullableString(input.appId || input.app_id);
+  const defaultLaunchUrl = toNullableString(input.defaultLaunchUrl || input.default_launch_url);
+  const enabled = input.enabled === undefined ? true : Boolean(input.enabled);
+
+  if (!platform) {
+    throw new Error("Platform is required");
+  }
+  if (!["onesignal"].includes(platform)) {
+    throw new Error("Relay platform is not supported");
+  }
+  if (name.length > 120) {
+    throw new Error("Config name is too long");
+  }
+  if (appId && appId.length > 160) {
+    throw new Error("OneSignal app ID is too long");
+  }
+  if (defaultLaunchUrl && defaultLaunchUrl.length > 2000) {
+    throw new Error("Default launch URL is too long");
+  }
+
+  return {
+    platform,
+    name,
+    appId,
+    defaultLaunchUrl,
+    enabled: enabled ? 1 : 0,
+  };
+}
+
+function publicMessageRelayConfig(config) {
+  return {
+    id: config.id,
+    platform: config.platform,
+    name: config.name,
+    appId: config.appId || config.app_id || null,
+    defaultLaunchUrl: config.defaultLaunchUrl || config.default_launch_url || null,
+    enabled: Boolean(config.enabled),
+    createdAt: config.createdAt || config.created_at,
+    updatedAt: config.updatedAt || config.updated_at,
+  };
+}
+
+function normalizeMessageRelayAttempt(input = {}) {
+  const platform = toNullableString(input.platform || "onesignal")?.toLowerCase();
+  const source = toNullableString(input.source) || "hermes";
+  const status = toNullableString(input.status) || "pending";
+  const statusCode =
+    input.statusCode === undefined || input.statusCode === null
+      ? null
+      : Number.parseInt(String(input.statusCode), 10);
+  const durationMs =
+    input.durationMs === undefined || input.durationMs === null
+      ? null
+      : Number.parseInt(String(input.durationMs), 10);
+  const responseBody = input.responseBody === undefined || input.responseBody === null
+    ? null
+    : String(input.responseBody).slice(0, 12000);
+  const errorMessage = input.errorMessage === undefined || input.errorMessage === null
+    ? null
+    : String(input.errorMessage).slice(0, 1000);
+
+  if (!platform) {
+    throw new Error("Platform is required");
+  }
+  if (!["onesignal"].includes(platform)) {
+    throw new Error("Relay platform is not supported");
+  }
+  if (!["pending", "succeeded", "partial_failed", "failed", "unauthorized"].includes(status)) {
+    throw new Error("Relay status is invalid");
+  }
+  if (source.length > 80) {
+    throw new Error("Relay source is too long");
+  }
+  if (statusCode !== null && (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599)) {
+    throw new Error("Relay response status code is invalid");
+  }
+  if (durationMs !== null && (!Number.isInteger(durationMs) || durationMs < 0)) {
+    throw new Error("Relay duration is invalid");
+  }
+
+  return {
+    platform,
+    source,
+    inboundPayloadJson: normalizeJsonColumn(input.inboundPayload, {}),
+    outboundPayloadJson: normalizeJsonColumn(input.outboundPayload, {}),
+    responseJson: normalizeJsonColumn(input.response, {}),
+    status,
+    statusCode,
+    responseBody,
+    errorMessage,
+    durationMs,
+  };
+}
+
+function publicMessageRelayAttempt(attempt) {
+  return {
+    id: attempt.id,
+    platform: attempt.platform,
+    source: attempt.source,
+    inboundPayload: parseJsonColumn(attempt.inboundPayloadJson || attempt.inbound_payload_json, {}),
+    outboundPayload: parseJsonColumn(attempt.outboundPayloadJson || attempt.outbound_payload_json, {}),
+    response: parseJsonColumn(attempt.responseJson || attempt.response_json, {}),
+    status: attempt.status,
+    statusCode: attempt.statusCode ?? attempt.status_code ?? null,
+    responseBody: attempt.responseBody || attempt.response_body || null,
+    errorMessage: attempt.errorMessage || attempt.error_message || null,
+    durationMs: attempt.durationMs ?? attempt.duration_ms ?? null,
+    createdAt: attempt.createdAt || attempt.created_at,
+  };
+}
+
 export function createAuthStore({ dbPath, filePath, sessionSecret }) {
   const databasePath = dbPath || filePath;
 
@@ -423,6 +537,32 @@ export function createAuthStore({ dbPath, filePath, sessionSecret }) {
           source TEXT NOT NULL,
           created_at TEXT NOT NULL,
           FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS message_relay_configs (
+          id TEXT PRIMARY KEY,
+          platform TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          app_id TEXT,
+          default_launch_url TEXT,
+          enabled INTEGER NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS message_relay_attempts (
+          id TEXT PRIMARY KEY,
+          platform TEXT NOT NULL,
+          source TEXT NOT NULL,
+          inbound_payload_json TEXT NOT NULL,
+          outbound_payload_json TEXT NOT NULL,
+          response_json TEXT NOT NULL,
+          status TEXT NOT NULL,
+          status_code INTEGER,
+          response_body TEXT,
+          error_message TEXT,
+          duration_ms INTEGER,
+          created_at TEXT NOT NULL
         );
       `);
     }
@@ -858,6 +998,172 @@ export function createAuthStore({ dbPath, filePath, sessionSecret }) {
         )
         .all(cleanUserId, cleanLimit)
         .map(publicWebhookPushAttempt);
+
+      return { attempts };
+    },
+
+    async getMessageRelayConfig(platform = "onesignal") {
+      const cleanPlatform = toNullableString(platform)?.toLowerCase();
+
+      if (!cleanPlatform) {
+        throw new Error("Platform is required");
+      }
+
+      const config = getDb()
+        .prepare(
+          `
+            SELECT id, platform, name, app_id, default_launch_url, enabled, created_at, updated_at
+            FROM message_relay_configs
+            WHERE platform = ?
+          `
+        )
+        .get(cleanPlatform);
+
+      return config ? publicMessageRelayConfig(config) : null;
+    },
+
+    async upsertMessageRelayConfig(input) {
+      const clean = normalizeMessageRelayConfig(input);
+      const database = getDb();
+      const now = new Date().toISOString();
+      const existing = database
+        .prepare(
+          `
+            SELECT id
+            FROM message_relay_configs
+            WHERE platform = ?
+          `
+        )
+        .get(clean.platform);
+      const id = existing?.id || randomUUID();
+
+      database
+        .prepare(
+          `
+            INSERT INTO message_relay_configs (
+              id,
+              platform,
+              name,
+              app_id,
+              default_launch_url,
+              enabled,
+              created_at,
+              updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(platform) DO UPDATE SET
+              name = excluded.name,
+              app_id = excluded.app_id,
+              default_launch_url = excluded.default_launch_url,
+              enabled = excluded.enabled,
+              updated_at = excluded.updated_at
+          `
+        )
+        .run(
+          id,
+          clean.platform,
+          clean.name,
+          clean.appId,
+          clean.defaultLaunchUrl,
+          clean.enabled,
+          existing ? now : now,
+          now
+        );
+
+      return this.getMessageRelayConfig(clean.platform);
+    },
+
+    async recordMessageRelayAttempt(input) {
+      const clean = normalizeMessageRelayAttempt(input);
+      const now = new Date().toISOString();
+      const attempt = {
+        id: randomUUID(),
+        platform: clean.platform,
+        source: clean.source,
+        inboundPayloadJson: clean.inboundPayloadJson,
+        outboundPayloadJson: clean.outboundPayloadJson,
+        responseJson: clean.responseJson,
+        status: clean.status,
+        statusCode: clean.statusCode,
+        responseBody: clean.responseBody,
+        errorMessage: clean.errorMessage,
+        durationMs: clean.durationMs,
+        createdAt: now,
+      };
+
+      getDb()
+        .prepare(
+          `
+            INSERT INTO message_relay_attempts (
+              id,
+              platform,
+              source,
+              inbound_payload_json,
+              outbound_payload_json,
+              response_json,
+              status,
+              status_code,
+              response_body,
+              error_message,
+              duration_ms,
+              created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `
+        )
+        .run(
+          attempt.id,
+          attempt.platform,
+          attempt.source,
+          attempt.inboundPayloadJson,
+          attempt.outboundPayloadJson,
+          attempt.responseJson,
+          attempt.status,
+          attempt.statusCode,
+          attempt.responseBody,
+          attempt.errorMessage,
+          attempt.durationMs,
+          attempt.createdAt
+        );
+
+      return publicMessageRelayAttempt(attempt);
+    },
+
+    async listMessageRelayAttempts({ platform = "onesignal", status = "all", limit = 100 } = {}) {
+      const cleanPlatform = toNullableString(platform)?.toLowerCase();
+
+      if (!cleanPlatform) {
+        throw new Error("Platform is required");
+      }
+
+      const cleanLimit = Math.min(200, Math.max(1, Number.parseInt(String(limit), 10) || 100));
+      const statuses = ["succeeded", "partial_failed", "failed", "unauthorized"];
+      const shouldFilterStatus = statuses.includes(status);
+      const attempts = getDb()
+        .prepare(
+          `
+            SELECT
+              id,
+              platform,
+              source,
+              inbound_payload_json,
+              outbound_payload_json,
+              response_json,
+              status,
+              status_code,
+              response_body,
+              error_message,
+              duration_ms,
+              created_at
+            FROM message_relay_attempts
+            WHERE platform = ?
+              ${shouldFilterStatus ? "AND status = ?" : ""}
+            ORDER BY created_at DESC
+            LIMIT ?
+          `
+        )
+        .all(...(shouldFilterStatus ? [cleanPlatform, status, cleanLimit] : [cleanPlatform, cleanLimit]))
+        .map(publicMessageRelayAttempt);
 
       return { attempts };
     },
