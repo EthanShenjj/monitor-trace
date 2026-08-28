@@ -690,6 +690,8 @@ test("OneSignal push proxy converts Hermes webhook arrays to Create Message payl
   assert.equal(payload.contents.en, "你好张三，快来参加活动吧！");
   assert.equal(payload.url, "https://monitor-trace.vercel.app/messages");
   assert.equal(payload.data.campaign, "daily");
+  assert.equal(payload.data.ops_task_id, "0050");
+  assert.equal(payload.data.ops_request_id, "f7b66eb7-3363-4a46-a402-601a64b45f76");
   assert.equal(payload.data["#ops_receipt_properties"].ops_task_id, "0050");
 });
 
@@ -894,6 +896,53 @@ test("OneSignal event stream helper accepts ThinkingData track-shaped push callb
   assert.equal(input.analytics.userId, "user_123");
   assert.match(input.body, /User: user_123/);
   assert.match(input.body, /Ops request: request_uuid/);
+});
+
+test("OneSignal event stream helper accepts nested TA OneSignal callback schema", () => {
+  const input = buildOneSignalEventMessageInput({
+    schema: "ta_onesignal_push_event_v1",
+    event: {
+      provider: "onesignal",
+      kind: "message.push.clicked",
+      id: "evt_nested_001",
+      timestamp: "1787900000",
+      datetime: "2026-08-28T10:30:00.000Z",
+      app_id: "dbb8017a-3495-402d-9094-e408bd1d6e27",
+    },
+    message: {
+      id: "msg_nested_001",
+      name: "Hermes campaign",
+      title: "Nested title",
+      contents: "Nested content",
+      url: "https://monitor-trace.vercel.app/relay",
+    },
+    recipient: {
+      account_id: "account_123",
+      distinct_id: "sub_123",
+      external_id: "external_123",
+      onesignal_id: "os_123",
+      subscription_id: "sub_456",
+      subscription_device_type: "Chrome",
+    },
+    context: {
+      push_id: "account_123",
+      receipt_schema: "ta_receipt_v1",
+      ops_receipt_properties: {
+        ops_project_id: "1",
+        ops_request_id: "request_nested",
+      },
+    },
+  });
+
+  assert.equal(input.eventType, "message.push.clicked");
+  assert.equal(input.externalId, "evt_nested_001");
+  assert.equal(input.analytics.eventId, "evt_nested_001");
+  assert.equal(input.analytics.notificationId, "msg_nested_001");
+  assert.equal(input.analytics.userId, "account_123");
+  assert.equal(input.analytics.subscriptionId, "sub_456");
+  assert.equal(input.analytics.deviceType, "Chrome");
+  assert.match(input.body, /Nested content/);
+  assert.match(input.body, /Ops request: request_nested/);
 });
 
 test("OneSignal helper rejects unsupported events", () => {

@@ -133,6 +133,7 @@ export function buildOneSignalNotificationPayload(item, options = {}) {
     },
     url: launchUrl || undefined,
     data: {
+      ...receiptProperties,
       ...customParams,
       "#ops_receipt_properties": receiptProperties,
       push_id: firstString(message.push_id),

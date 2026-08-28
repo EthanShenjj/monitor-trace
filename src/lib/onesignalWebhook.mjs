@@ -49,9 +49,23 @@ function firstLocalizedString(...values) {
   return null;
 }
 
+function firstRecord(...values) {
+  for (const value of values) {
+    const record = asRecord(value);
+
+    if (Object.keys(record).length > 0) {
+      return record;
+    }
+  }
+
+  return {};
+}
+
 function getEventName(payload, headers = {}) {
   const event = asRecord(payload.event);
   const properties = asRecord(payload.properties);
+  const context = asRecord(payload.context);
+  const recipient = asRecord(payload.recipient);
 
   return firstString(
     event.kind,
@@ -65,6 +79,9 @@ function getEventName(payload, headers = {}) {
     properties.event_kind,
     properties.eventType,
     properties.event_type,
+    context.onesignal_event_kind,
+    context.event_kind,
+    recipient.onesignal_event_kind,
     headers["x-onesignal-event"],
     headers["X-OneSignal-Event"]
   );
@@ -128,10 +145,13 @@ export function buildOneSignalEventMessageInput(body, headers = {}) {
   const payload = asRecord(body);
   const event = asRecord(payload.event);
   const properties = asRecord(payload.properties);
+  const context = asRecord(payload.context);
+  const recipient = asRecord(payload.recipient);
   const eventData = asRecord(event.data || payload.event_data);
   const message = asRecord(payload.message);
   const messageTitle = asRecord(message.title);
   const messageContents = asRecord(message.contents || message.content);
+  const contextReceiptProperties = asRecord(context.ops_receipt_properties);
   const additionalData = asRecord(
     payload.additionalData ||
       payload.additional_data ||
@@ -139,6 +159,7 @@ export function buildOneSignalEventMessageInput(body, headers = {}) {
       properties.additional_data ||
       message.data ||
       payload.data ||
+      context ||
       properties
   );
   const rawEventName = getEventName(payload, headers);
@@ -149,10 +170,11 @@ export function buildOneSignalEventMessageInput(body, headers = {}) {
   }
 
   const eventId = firstString(event.id, payload.eventId, payload.event_id, payload["event.id"]);
-  const receiptProperties = asRecord(
+  const receiptProperties = firstRecord(
     properties["#ops_receipt_properties"] ||
       properties.ops_receipt_properties ||
-      payload["#ops_receipt_properties"] ||
+      contextReceiptProperties,
+    payload["#ops_receipt_properties"] ||
       payload.ops_receipt_properties
   );
   const notificationId = firstString(
@@ -163,14 +185,18 @@ export function buildOneSignalEventMessageInput(body, headers = {}) {
     message.id,
     payload["message.id"],
     properties.onesignal_message_id,
-    properties.message_id
+    properties.message_id,
+    context.onesignal_message_id,
+    context.message_id
   );
   const normalizedEventId = firstString(
     eventId,
     properties.onesignal_event_id,
-    properties.event_id
+    properties.event_id,
+    context.onesignal_event_id,
+    context.event_id
   );
-  const actionId = firstString(payload.actionId, payload.action_id, eventData.target_id);
+  const actionId = firstString(payload.actionId, payload.action_id, eventData.target_id, context.action_id);
   const subscriptionId = firstString(
     payload.subscriptionId,
     payload.subscription_id,
@@ -179,7 +205,9 @@ export function buildOneSignalEventMessageInput(body, headers = {}) {
     payload["user.subscription.id"],
     payload["#distinct_id"],
     properties.onesignal_subscription_id,
-    properties.subscription_id
+    properties.subscription_id,
+    recipient.subscription_id,
+    recipient.distinct_id
   );
   const externalUserId = firstString(
     event.external_id,
@@ -189,6 +217,8 @@ export function buildOneSignalEventMessageInput(body, headers = {}) {
     payload["#account_id"],
     properties.account_id,
     properties.user_id,
+    recipient.account_id,
+    recipient.external_id,
     additionalData.userId,
     additionalData.user_id
   );
@@ -205,10 +235,10 @@ export function buildOneSignalEventMessageInput(body, headers = {}) {
   const content = firstLocalizedString(
     payload.content,
     payload.body,
-    payload.message,
-    payload.text,
     messageContents,
     message.contents,
+    payload.message,
+    payload.text,
     payload["message.contents.en"],
     payload["message.content.en"]
   );
@@ -219,7 +249,9 @@ export function buildOneSignalEventMessageInput(body, headers = {}) {
     payload.failureReason,
     payload["event.data.failure_reason"],
     properties.onesignal_failure_reason,
-    properties.failure_reason
+    properties.failure_reason,
+    context.onesignal_failure_reason,
+    context.failure_reason
   );
   const campaignId = firstString(additionalData.campaignId, additionalData.campaign_id);
   const eventDateTime = firstString(
@@ -227,14 +259,16 @@ export function buildOneSignalEventMessageInput(body, headers = {}) {
     payload.event_datetime,
     payload["event.datetime"],
     payload["#time"],
-    properties.event_datetime
+    properties.event_datetime,
+    event.datetime
   );
   const deviceType = firstString(
     event.subscription_device_type,
     payload.subscription_device_type,
     payload["event.subscription_device_type"],
     properties.onesignal_subscription_device_type,
-    properties.subscription_device_type
+    properties.subscription_device_type,
+    recipient.subscription_device_type
   );
 
   if (!notificationId && !normalizedEventId) {
