@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authStore } from "@/lib/authStore.mjs";
-import { buildOneSignalClickMessageInput } from "@/lib/onesignalWebhook.mjs";
+import { buildOneSignalEventMessageInput } from "@/lib/onesignalWebhook.mjs";
 import { trackServerThinkingDataEvent } from "@/lib/serverAnalytics.mjs";
 
 export const dynamic = "force-dynamic";
@@ -61,21 +61,27 @@ export async function POST(request) {
   }
 
   try {
-    const input = buildOneSignalClickMessageInput(body, getRequestHeaders(request));
+    const input = buildOneSignalEventMessageInput(body, getRequestHeaders(request));
     const { message, duplicate } = await authStore.createWebhookMessage(input);
 
     await trackServerThinkingDataEvent(
-      "onesignal_notification_clicked",
+      input.eventType === "notification.clicked" || input.eventType === "message.push.clicked"
+        ? "onesignal_notification_clicked"
+        : "onesignal_push_event_received",
       {
         provider: message.provider,
         event_type: message.eventType,
         message_status: message.readAt ? "read" : "unread",
         duplicate,
+        event_id: input.analytics.eventId,
         notification_id: input.analytics.notificationId,
         action_id: input.analytics.actionId,
         subscription_id: input.analytics.subscriptionId,
         click_url: input.analytics.url,
         campaign_id: input.analytics.campaignId,
+        failure_reason: input.analytics.failureReason,
+        event_datetime: input.analytics.eventDateTime,
+        subscription_device_type: input.analytics.deviceType,
       },
       {
         accountId: input.analytics.userId,
@@ -95,7 +101,7 @@ export async function POST(request) {
     return jsonResponse(
       {
         received: false,
-        error: error?.message || "Unable to process OneSignal click event",
+        error: error?.message || "Unable to process OneSignal push event",
       },
       { status: 400 }
     );

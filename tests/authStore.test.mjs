@@ -17,7 +17,10 @@ import {
   normalizeWebhookPushRequest,
   sendWebhookPush,
 } from "../src/lib/webhookPush.mjs";
-import { buildOneSignalClickMessageInput } from "../src/lib/onesignalWebhook.mjs";
+import {
+  buildOneSignalClickMessageInput,
+  buildOneSignalEventMessageInput,
+} from "../src/lib/onesignalWebhook.mjs";
 import {
   buildOneSignalNotificationPayload,
   handleOneSignalPushProxy,
@@ -690,13 +693,58 @@ test("OneSignal click webhook messages are stored and deduplicated", async () =>
   });
 });
 
-test("OneSignal helper rejects non-click events", () => {
+test("OneSignal event stream helper normalizes push sent and failed payloads", () => {
+  const sent = buildOneSignalEventMessageInput({
+    event: {
+      id: "event_sent_123",
+      kind: "message.push.sent",
+      datetime: "2026-08-28T04:00:00.000Z",
+      subscription_id: "sub_123",
+      external_id: "user_123",
+      subscription_device_type: "Chrome",
+    },
+    message: {
+      id: "msg_123",
+      title: {
+        en: "Daily reward",
+      },
+      contents: {
+        en: "Open the app",
+      },
+    },
+  });
+
+  assert.equal(sent.provider, "onesignal");
+  assert.equal(sent.eventType, "message.push.sent");
+  assert.equal(sent.externalId, "event_sent_123");
+  assert.equal(sent.title, "Daily reward");
+  assert.match(sent.body, /Open the app/);
+  assert.match(sent.body, /User: user_123/);
+  assert.equal(sent.analytics.notificationId, "msg_123");
+  assert.equal(sent.analytics.subscriptionId, "sub_123");
+  assert.equal(sent.analytics.userId, "user_123");
+  assert.equal(sent.analytics.deviceType, "Chrome");
+
+  const failed = buildOneSignalEventMessageInput({
+    "event.kind": "message.push.failed",
+    "event.id": "event_failed_123",
+    "message.id": "msg_failed",
+    "event.data.failure_reason": "Invalid subscription",
+  });
+
+  assert.equal(failed.eventType, "message.push.failed");
+  assert.equal(failed.externalId, "event_failed_123");
+  assert.match(failed.body, /Failure reason: Invalid subscription/);
+  assert.equal(failed.analytics.failureReason, "Invalid subscription");
+});
+
+test("OneSignal helper rejects unsupported events", () => {
   assert.throws(
     () =>
-      buildOneSignalClickMessageInput({
-        event: "notification.displayed",
+      buildOneSignalEventMessageInput({
+        event: "message.email.sent",
         notificationId: "notif_123",
       }),
-    /notification.clicked/
+    /push sent, received, clicked, and failed/
   );
 });
