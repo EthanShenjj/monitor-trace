@@ -16,12 +16,35 @@ const PAYMENT_EVENT_PROPERTIES = {
   platform: 'web',
 };
 
+type DashboardUser = {
+  id: string;
+  name?: string;
+  email?: string;
+  createdAt?: string;
+};
+
 function generatePaymentAmount() {
   return (Math.floor(Math.random() * 49501) + 500) / 100;
 }
 
+function formatUserDate(value: string | undefined, locale: string) {
+  if (!value) {
+    return '-';
+  }
+
+  return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
 export default function Dashboard() {
   const { t, locale } = useApp();
+  const [user, setUser] = useState<DashboardUser | null>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
   const [paymentAmount, setPaymentAmount] = useState('29.00');
   const [amountEntryMethod, setAmountEntryMethod] = useState<'manual' | 'random'>('manual');
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
@@ -35,6 +58,53 @@ export default function Dashboard() {
       total_requests: aggregateMetrics.totalRequests,
       error_rate: aggregateMetrics.errorRate,
     });
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadUser() {
+      setIsLoadingUser(true);
+
+      try {
+        const response = await fetch('/api/auth/me', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+        });
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Unable to load user');
+        }
+        if (isActive) {
+          setUser(payload?.user || null);
+        }
+      } catch (error) {
+        const statusCode = error instanceof Error && /^\d+$/.test(error.name) ? Number(error.name) : undefined;
+        const failureReason = error instanceof Error ? error.message : 'Unable to load user';
+
+        trackAnalyticsEvent('api_request_failed', {
+          api_path: '/api/auth/me',
+          status_code: statusCode,
+          feature: 'dashboard_user_info',
+          failure_reason: failureReason,
+          platform: 'web',
+        });
+        if (isActive) {
+          setUser(null);
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingUser(false);
+        }
+      }
+    }
+
+    loadUser();
+
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -203,6 +273,82 @@ export default function Dashboard() {
           {t('download_report')}
         </button>
       </div>
+
+      <section
+        className="glass-panel"
+        style={{
+          padding: '1.25rem',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))',
+          gap: '1rem',
+          alignItems: 'center',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', minWidth: 0 }}>
+          <div
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'linear-gradient(135deg, var(--accent-primary), var(--status-success))',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 800,
+              flex: '0 0 auto',
+            }}
+          >
+            {(user?.name || user?.email || 'U').slice(0, 1).toUpperCase()}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase' }}>
+              {locale === 'zh' ? '当前用户' : 'Current User'}
+            </p>
+            <h2 style={{ fontSize: '1.1rem', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {isLoadingUser ? (locale === 'zh' ? '加载中' : 'Loading') : user?.name || '-'}
+            </h2>
+          </div>
+        </div>
+
+        {[
+          {
+            label: locale === 'zh' ? '用户 ID' : 'User ID',
+            value: isLoadingUser ? '-' : user?.id || '-',
+          },
+          {
+            label: locale === 'zh' ? '邮箱' : 'Email',
+            value: isLoadingUser ? '-' : user?.email || '-',
+          },
+          {
+            label: locale === 'zh' ? '创建时间' : 'Created',
+            value: isLoadingUser ? '-' : formatUserDate(user?.createdAt, locale),
+          },
+        ].map((item) => (
+          <div
+            key={item.label}
+            style={{
+              minHeight: '64px',
+              padding: '0.875rem',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border-subtle)',
+              background: 'var(--bg-secondary)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              gap: '0.25rem',
+              minWidth: 0,
+            }}
+          >
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase' }}>
+              {item.label}
+            </p>
+            <p style={{ color: 'var(--text-primary)', fontSize: '0.88rem', fontWeight: 600, overflowWrap: 'anywhere' }}>
+              {item.value}
+            </p>
+          </div>
+        ))}
+      </section>
 
       {/* Metric Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>

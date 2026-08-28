@@ -47,6 +47,26 @@ function firstStringList(...values) {
   return [];
 }
 
+function oneSignalErrorMessage(responseJson) {
+  const errors = responseJson?.errors;
+
+  if (!errors) {
+    return null;
+  }
+
+  if (Array.isArray(errors)) {
+    const message = errors.map((item) => String(item).trim()).filter(Boolean).join("; ");
+
+    return message || null;
+  }
+
+  if (typeof errors === "object") {
+    return JSON.stringify(errors);
+  }
+
+  return String(errors).trim() || null;
+}
+
 function getReceiptProperties(item) {
   return asRecord(asRecord(item)["#ops_receipt_properties"]);
 }
@@ -167,10 +187,17 @@ export async function sendOneSignalNotification(payload, {
     throw new Error(responseBody || response.statusText || "OneSignal request failed");
   }
 
+  const responseJson = responseBody ? JSON.parse(responseBody) : null;
+  const apiErrorMessage = oneSignalErrorMessage(responseJson);
+
+  if (apiErrorMessage) {
+    throw new Error(`OneSignal error: ${apiErrorMessage}`);
+  }
+
   return {
     statusCode: response.status,
     responseBody,
-    responseJson: responseBody ? JSON.parse(responseBody) : null,
+    responseJson,
   };
 }
 

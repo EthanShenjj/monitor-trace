@@ -759,6 +759,38 @@ test("OneSignal push proxy sends Authorization header and reports partial failur
   ]);
 });
 
+test("OneSignal push proxy treats OneSignal response errors as failed deliveries", async () => {
+  const response = await handleOneSignalPushProxy({
+    body: [
+      {
+        push_id: "missing-user",
+        params: {
+          title: "Hello",
+          content: "World",
+        },
+      },
+    ],
+    appId: "app-123",
+    apiKey: "rest-key-456",
+    fetcher: async () => ({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: async () => '{"id":"","errors":["All included players are not subscribed"]}',
+    }),
+  });
+
+  assert.equal(response.return_code, 1);
+  assert.equal(response.return_message, "failed");
+  assert.deepEqual(response.data.success_list, []);
+  assert.deepEqual(response.data.fail_list, [
+    {
+      index: 1,
+      message: "OneSignal error: All included players are not subscribed",
+    },
+  ]);
+});
+
 test("OneSignal notification sender requires REST API key", async () => {
   await assert.rejects(
     sendOneSignalNotification(
