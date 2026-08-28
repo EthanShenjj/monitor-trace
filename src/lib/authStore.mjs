@@ -459,6 +459,89 @@ function publicMessageRelayAttempt(attempt) {
   };
 }
 
+function normalizeMessageRelayCallback(input = {}) {
+  const platform = toNullableString(input.platform || "onesignal")?.toLowerCase();
+  const source = toNullableString(input.source) || "onesignal_event_stream";
+  const eventType = toNullableString(input.eventType || input.event_type) || "unknown";
+  const status = toNullableString(input.status) || "accepted";
+  const statusCode =
+    input.statusCode === undefined || input.statusCode === null
+      ? null
+      : Number.parseInt(String(input.statusCode), 10);
+  const durationMs =
+    input.durationMs === undefined || input.durationMs === null
+      ? null
+      : Number.parseInt(String(input.durationMs), 10);
+  const duplicate = input.duplicate ? 1 : 0;
+  const errorMessage = input.errorMessage === undefined || input.errorMessage === null
+    ? null
+    : String(input.errorMessage).slice(0, 1000);
+
+  if (!platform) {
+    throw new Error("Platform is required");
+  }
+  if (!["onesignal"].includes(platform)) {
+    throw new Error("Relay platform is not supported");
+  }
+  if (!["accepted", "duplicate", "rejected"].includes(status)) {
+    throw new Error("Relay callback status is invalid");
+  }
+  if (source.length > 80) {
+    throw new Error("Relay callback source is too long");
+  }
+  if (eventType.length > 160) {
+    throw new Error("Relay callback event type is too long");
+  }
+  if (statusCode !== null && (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599)) {
+    throw new Error("Relay callback status code is invalid");
+  }
+  if (durationMs !== null && (!Number.isInteger(durationMs) || durationMs < 0)) {
+    throw new Error("Relay callback duration is invalid");
+  }
+
+  return {
+    platform,
+    source,
+    eventType,
+    eventId: toNullableString(input.eventId || input.event_id),
+    messageId: toNullableString(input.messageId || input.message_id),
+    subscriptionId: toNullableString(input.subscriptionId || input.subscription_id),
+    externalId: toNullableString(input.externalId || input.external_id),
+    requestHeadersJson: normalizeJsonColumn(input.requestHeaders, {}),
+    requestBodyJson: normalizeJsonColumn(input.requestBody, {}),
+    responseJson: normalizeJsonColumn(input.response, {}),
+    responseHeadersJson: normalizeJsonColumn(input.responseHeaders, {}),
+    status,
+    statusCode,
+    duplicate,
+    errorMessage,
+    durationMs,
+  };
+}
+
+function publicMessageRelayCallback(callback) {
+  return {
+    id: callback.id,
+    platform: callback.platform,
+    source: callback.source,
+    eventType: callback.eventType || callback.event_type,
+    eventId: callback.eventId || callback.event_id || null,
+    messageId: callback.messageId || callback.message_id || null,
+    subscriptionId: callback.subscriptionId || callback.subscription_id || null,
+    externalId: callback.externalId || callback.external_id || null,
+    requestHeaders: parseJsonColumn(callback.requestHeadersJson || callback.request_headers_json, {}),
+    requestBody: parseJsonColumn(callback.requestBodyJson || callback.request_body_json, {}),
+    response: parseJsonColumn(callback.responseJson || callback.response_json, {}),
+    responseHeaders: parseJsonColumn(callback.responseHeadersJson || callback.response_headers_json, {}),
+    status: callback.status,
+    statusCode: callback.statusCode ?? callback.status_code ?? null,
+    duplicate: Boolean(callback.duplicate),
+    errorMessage: callback.errorMessage || callback.error_message || null,
+    durationMs: callback.durationMs ?? callback.duration_ms ?? null,
+    createdAt: callback.createdAt || callback.created_at,
+  };
+}
+
 export function createAuthStore({ dbPath, filePath, sessionSecret }) {
   const databasePath = dbPath || filePath;
 
@@ -560,6 +643,27 @@ export function createAuthStore({ dbPath, filePath, sessionSecret }) {
           status TEXT NOT NULL,
           status_code INTEGER,
           response_body TEXT,
+          error_message TEXT,
+          duration_ms INTEGER,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS message_relay_callbacks (
+          id TEXT PRIMARY KEY,
+          platform TEXT NOT NULL,
+          source TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          event_id TEXT,
+          message_id TEXT,
+          subscription_id TEXT,
+          external_id TEXT,
+          request_headers_json TEXT NOT NULL,
+          request_body_json TEXT NOT NULL,
+          response_json TEXT NOT NULL,
+          response_headers_json TEXT NOT NULL,
+          status TEXT NOT NULL,
+          status_code INTEGER,
+          duplicate INTEGER NOT NULL,
           error_message TEXT,
           duration_ms INTEGER,
           created_at TEXT NOT NULL
@@ -1166,6 +1270,140 @@ export function createAuthStore({ dbPath, filePath, sessionSecret }) {
         .map(publicMessageRelayAttempt);
 
       return { attempts };
+    },
+
+    async recordMessageRelayCallback(input) {
+      const clean = normalizeMessageRelayCallback(input);
+      const now = new Date().toISOString();
+      const callback = {
+        id: randomUUID(),
+        platform: clean.platform,
+        source: clean.source,
+        eventType: clean.eventType,
+        eventId: clean.eventId,
+        messageId: clean.messageId,
+        subscriptionId: clean.subscriptionId,
+        externalId: clean.externalId,
+        requestHeadersJson: clean.requestHeadersJson,
+        requestBodyJson: clean.requestBodyJson,
+        responseJson: clean.responseJson,
+        responseHeadersJson: clean.responseHeadersJson,
+        status: clean.status,
+        statusCode: clean.statusCode,
+        duplicate: clean.duplicate,
+        errorMessage: clean.errorMessage,
+        durationMs: clean.durationMs,
+        createdAt: now,
+      };
+
+      getDb()
+        .prepare(
+          `
+            INSERT INTO message_relay_callbacks (
+              id,
+              platform,
+              source,
+              event_type,
+              event_id,
+              message_id,
+              subscription_id,
+              external_id,
+              request_headers_json,
+              request_body_json,
+              response_json,
+              response_headers_json,
+              status,
+              status_code,
+              duplicate,
+              error_message,
+              duration_ms,
+              created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `
+        )
+        .run(
+          callback.id,
+          callback.platform,
+          callback.source,
+          callback.eventType,
+          callback.eventId,
+          callback.messageId,
+          callback.subscriptionId,
+          callback.externalId,
+          callback.requestHeadersJson,
+          callback.requestBodyJson,
+          callback.responseJson,
+          callback.responseHeadersJson,
+          callback.status,
+          callback.statusCode,
+          callback.duplicate,
+          callback.errorMessage,
+          callback.durationMs,
+          callback.createdAt
+        );
+
+      return publicMessageRelayCallback(callback);
+    },
+
+    async listMessageRelayCallbacks({
+      platform = "onesignal",
+      status = "all",
+      eventType = "all",
+      limit = 100,
+    } = {}) {
+      const cleanPlatform = toNullableString(platform)?.toLowerCase();
+
+      if (!cleanPlatform) {
+        throw new Error("Platform is required");
+      }
+
+      const cleanLimit = Math.min(200, Math.max(1, Number.parseInt(String(limit), 10) || 100));
+      const cleanEventType = toNullableString(eventType);
+      const statuses = ["accepted", "duplicate", "rejected"];
+      const shouldFilterStatus = statuses.includes(status);
+      const shouldFilterEventType = Boolean(cleanEventType && cleanEventType !== "all");
+      const callbacks = getDb()
+        .prepare(
+          `
+            SELECT
+              id,
+              platform,
+              source,
+              event_type,
+              event_id,
+              message_id,
+              subscription_id,
+              external_id,
+              request_headers_json,
+              request_body_json,
+              response_json,
+              response_headers_json,
+              status,
+              status_code,
+              duplicate,
+              error_message,
+              duration_ms,
+              created_at
+            FROM message_relay_callbacks
+            WHERE platform = ?
+              ${shouldFilterStatus ? "AND status = ?" : ""}
+              ${shouldFilterEventType ? "AND event_type = ?" : ""}
+            ORDER BY created_at DESC
+            LIMIT ?
+          `
+        )
+        .all(
+          ...[
+            cleanPlatform,
+            ...(shouldFilterStatus ? [status] : []),
+            ...(shouldFilterEventType ? [cleanEventType] : []),
+            cleanLimit,
+          ]
+        )
+        .map(publicMessageRelayCallback);
+
+      return { callbacks };
     },
 
     createSessionToken(userId) {

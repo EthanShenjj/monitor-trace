@@ -167,7 +167,7 @@ OneSignal Event Streams should post push delivery and engagement callbacks to:
 https://monitor-trace.vercel.app/webhooks/onesignal/events
 ```
 
-The callback endpoint accepts `message.push.sent`, `message.push.received`, `message.push.clicked`, `message.push.failed`, and the legacy Web Push webhook event `notification.clicked`.
+The callback endpoint accepts `message.push.sent`, `message.push.received`, `message.push.clicked`, `message.push.failed`, and the legacy Web Push webhook event `notification.clicked`. Each callback stores the OneSignal request headers/body plus the JSON response returned by this app; authenticated users can review those callback records in `/relay` or through `/api/message-relay/callbacks`.
 
 Current product tracking plan:
 

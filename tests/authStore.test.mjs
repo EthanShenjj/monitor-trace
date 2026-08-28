@@ -598,6 +598,66 @@ test("message relay configs and attempts can be managed", async () => {
     });
     assert.equal(failedAttempts.attempts.length, 1);
     assert.equal(failedAttempts.attempts[0].id, secondAttempt.id);
+
+    const acceptedCallback = await store.recordMessageRelayCallback({
+      platform: "onesignal",
+      source: "onesignal_event_stream",
+      eventType: "message.push.received",
+      eventId: "evt_123",
+      messageId: "msg_123",
+      subscriptionId: "sub_123",
+      externalId: "user-1",
+      requestHeaders: {
+        "content-type": "application/json",
+      },
+      requestBody: {
+        event: {
+          kind: "message.push.received",
+          id: "evt_123",
+        },
+      },
+      response: {
+        received: true,
+        duplicate: false,
+        message_id: "local_msg_123",
+      },
+      responseHeaders: {
+        "cache-control": "no-store, max-age=0",
+      },
+      status: "accepted",
+      statusCode: 201,
+      durationMs: 9,
+    });
+    await store.recordMessageRelayCallback({
+      platform: "onesignal",
+      source: "onesignal_event_stream",
+      eventType: "message.push.clicked",
+      requestBody: {
+        event: "message.push.clicked",
+      },
+      response: {
+        received: false,
+        error: "OneSignal message id or event id is required",
+      },
+      status: "rejected",
+      statusCode: 400,
+      errorMessage: "OneSignal message id or event id is required",
+    });
+
+    assert.equal(acceptedCallback.eventType, "message.push.received");
+    assert.equal(acceptedCallback.eventId, "evt_123");
+    assert.equal(acceptedCallback.requestBody.event.kind, "message.push.received");
+    assert.equal(acceptedCallback.response.received, true);
+
+    const allCallbacks = await store.listMessageRelayCallbacks({ platform: "onesignal" });
+    assert.equal(allCallbacks.callbacks.length, 2);
+
+    const rejectedCallbacks = await store.listMessageRelayCallbacks({
+      platform: "onesignal",
+      status: "rejected",
+    });
+    assert.equal(rejectedCallbacks.callbacks.length, 1);
+    assert.equal(rejectedCallbacks.callbacks[0].statusCode, 400);
   });
 });
 

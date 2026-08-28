@@ -4,6 +4,7 @@ import { useApp } from "@/context/AppContext";
 import { useEffect, useMemo, useState } from "react";
 
 type RelayStatus = "all" | "succeeded" | "partial_failed" | "failed" | "unauthorized";
+type CallbackStatus = "all" | "accepted" | "duplicate" | "rejected";
 
 type RelayConfig = {
   id: string | null;
@@ -31,7 +32,29 @@ type RelayAttempt = {
   createdAt: string;
 };
 
+type RelayCallback = {
+  id: string;
+  platform: "onesignal";
+  source: string;
+  eventType: string;
+  eventId: string | null;
+  messageId: string | null;
+  subscriptionId: string | null;
+  externalId: string | null;
+  requestHeaders: Record<string, unknown>;
+  requestBody: unknown;
+  response: unknown;
+  responseHeaders: Record<string, unknown>;
+  status: Exclude<CallbackStatus, "all">;
+  statusCode: number | null;
+  duplicate: boolean;
+  errorMessage: string | null;
+  durationMs: number | null;
+  createdAt: string;
+};
+
 const productionEndpoint = "https://monitor-trace.vercel.app/api/webhooks/onesignal/push";
+const eventStreamEndpoint = "https://monitor-trace.vercel.app/webhooks/onesignal/events";
 
 function formatDate(value: string | null, locale: string) {
   if (!value) {
@@ -70,6 +93,40 @@ function statusClassName(status: RelayAttempt["status"]) {
   return "badge badge-error";
 }
 
+function callbackStatusLabel(status: CallbackStatus, locale: string) {
+  const labels = {
+    all: locale === "zh" ? "全部" : "All",
+    accepted: locale === "zh" ? "已接收" : "Accepted",
+    duplicate: locale === "zh" ? "重复" : "Duplicate",
+    rejected: locale === "zh" ? "拒收" : "Rejected",
+  };
+
+  return labels[status];
+}
+
+function callbackStatusClassName(status: RelayCallback["status"]) {
+  if (status === "accepted") {
+    return "badge badge-success";
+  }
+  if (status === "duplicate") {
+    return "badge badge-neutral";
+  }
+
+  return "badge badge-error";
+}
+
+function eventTypeLabel(eventType: string, locale: string) {
+  const labels: Record<string, string> = {
+    "message.push.sent": locale === "zh" ? "已发送" : "Sent",
+    "message.push.received": locale === "zh" ? "已触达" : "Received",
+    "message.push.clicked": locale === "zh" ? "已点击" : "Clicked",
+    "message.push.failed": locale === "zh" ? "失败" : "Failed",
+    "notification.clicked": locale === "zh" ? "已点击" : "Clicked",
+  };
+
+  return labels[eventType] || eventType;
+}
+
 function jsonBlock(value: unknown) {
   return JSON.stringify(value ?? {}, null, 2);
 }
@@ -78,9 +135,12 @@ export default function MessageRelayPage() {
   const { locale } = useApp();
   const [platform, setPlatform] = useState<"onesignal">("onesignal");
   const [status, setStatus] = useState<RelayStatus>("all");
+  const [callbackStatus, setCallbackStatus] = useState<CallbackStatus>("all");
   const [configs, setConfigs] = useState<RelayConfig[]>([]);
   const [attempts, setAttempts] = useState<RelayAttempt[]>([]);
+  const [callbacks, setCallbacks] = useState<RelayCallback[]>([]);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
+  const [selectedCallbackId, setSelectedCallbackId] = useState<string | null>(null);
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -93,12 +153,12 @@ export default function MessageRelayPage() {
     enabled: true,
   });
 
-  async function loadRelayData(nextStatus = status) {
+  async function loadRelayData(nextStatus = status, nextCallbackStatus = callbackStatus) {
     setIsLoading(true);
     setError(null);
 
     try {
-      const [configResponse, attemptResponse] = await Promise.all([
+      const [configResponse, attemptResponse, callbackResponse] = await Promise.all([
         fetch("/api/message-relay/configs", {
           cache: "no-store",
           credentials: "same-origin",
@@ -107,9 +167,14 @@ export default function MessageRelayPage() {
           cache: "no-store",
           credentials: "same-origin",
         }),
+        fetch(`/api/message-relay/callbacks?platform=${platform}&status=${nextCallbackStatus}`, {
+          cache: "no-store",
+          credentials: "same-origin",
+        }),
       ]);
       const configPayload = await configResponse.json().catch(() => null);
       const attemptPayload = await attemptResponse.json().catch(() => null);
+      const callbackPayload = await callbackResponse.json().catch(() => null);
 
       if (!configResponse.ok) {
         throw new Error(configPayload?.error || "Unable to load relay config");
@@ -117,20 +182,32 @@ export default function MessageRelayPage() {
       if (!attemptResponse.ok) {
         throw new Error(attemptPayload?.error || "Unable to load relay history");
       }
+      if (!callbackResponse.ok) {
+        throw new Error(callbackPayload?.error || "Unable to load relay callbacks");
+      }
 
       const nextConfigs = configPayload?.configs || [];
       const activeConfig = nextConfigs.find((config: RelayConfig) => config.platform === platform) || nextConfigs[0];
       const nextAttempts = attemptPayload?.attempts || [];
+      const nextCallbacks = callbackPayload?.callbacks || [];
 
       setConfigs(nextConfigs);
       setApiKeyConfigured(Boolean(configPayload?.secrets?.onesignalRestApiKeyConfigured));
       setAttempts(nextAttempts);
+      setCallbacks(nextCallbacks);
       setSelectedAttemptId((currentId) => {
         if (currentId && nextAttempts.some((attempt: RelayAttempt) => attempt.id === currentId)) {
           return currentId;
         }
 
         return nextAttempts[0]?.id || null;
+      });
+      setSelectedCallbackId((currentId) => {
+        if (currentId && nextCallbacks.some((callback: RelayCallback) => callback.id === currentId)) {
+          return currentId;
+        }
+
+        return nextCallbacks[0]?.id || null;
       });
 
       if (activeConfig) {
@@ -156,16 +233,20 @@ export default function MessageRelayPage() {
 
   useEffect(() => {
     const loadTimer = window.setTimeout(() => {
-      void loadRelayData(status);
+      void loadRelayData(status, callbackStatus);
     }, 0);
 
     return () => window.clearTimeout(loadTimer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [platform, status]);
+  }, [platform, status, callbackStatus]);
 
   const selectedAttempt = useMemo(
     () => attempts.find((attempt) => attempt.id === selectedAttemptId) || attempts[0] || null,
     [attempts, selectedAttemptId]
+  );
+  const selectedCallback = useMemo(
+    () => callbacks.find((callback) => callback.id === selectedCallbackId) || callbacks[0] || null,
+    [callbacks, selectedCallbackId]
   );
   const activeConfig = useMemo(
     () => configs.find((config) => config.platform === platform) || null,
@@ -188,6 +269,23 @@ export default function MessageRelayPage() {
         }
       ),
     [attempts]
+  );
+  const callbackSummary = useMemo(
+    () =>
+      callbacks.reduce(
+        (nextSummary, callback) => {
+          nextSummary.total += 1;
+          nextSummary[callback.status] += 1;
+          return nextSummary;
+        },
+        {
+          total: 0,
+          accepted: 0,
+          duplicate: 0,
+          rejected: 0,
+        }
+      ),
+    [callbacks]
   );
 
   async function saveConfig() {
@@ -217,7 +315,7 @@ export default function MessageRelayPage() {
       }
 
       setNotice(locale === "zh" ? "配置已保存" : "Config saved");
-      await loadRelayData(status);
+      await loadRelayData(status, callbackStatus);
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -261,7 +359,7 @@ export default function MessageRelayPage() {
           >
             <option value="onesignal">OneSignal</option>
           </select>
-          <button type="button" className="btn btn-outline" onClick={() => loadRelayData(status)}>
+          <button type="button" className="btn btn-outline" onClick={() => loadRelayData(status, callbackStatus)}>
             {locale === "zh" ? "刷新" : "Refresh"}
           </button>
         </div>
@@ -567,6 +665,222 @@ export default function MessageRelayPage() {
           </section>
         </div>
       </div>
+
+      <section className="glass-panel" style={{ overflow: "hidden" }}>
+        <div
+          style={{
+            padding: "1rem",
+            borderBottom: "1px solid var(--border-subtle)",
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "1rem",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h2 style={{ fontSize: "1.25rem", marginBottom: "0.3rem" }}>
+              {locale === "zh" ? "实际触达 / 点击回调" : "Delivery and click callbacks"}
+            </h2>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem", wordBreak: "break-all" }}>
+              {eventStreamEndpoint}
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap" }}>
+              {([
+                ["total", callbackSummary.total],
+                ["accepted", callbackSummary.accepted],
+                ["duplicate", callbackSummary.duplicate],
+                ["rejected", callbackSummary.rejected],
+              ] as const).map(([key, value]) => (
+                <span key={key} className={key === "rejected" ? "badge badge-error" : "badge badge-neutral"}>
+                  {key === "total"
+                    ? locale === "zh"
+                      ? `回调 ${value}`
+                      : `Callbacks ${value}`
+                    : `${callbackStatusLabel(key, locale)} ${value}`}
+                </span>
+              ))}
+            </div>
+            <select
+              value={callbackStatus}
+              onChange={(event) => setCallbackStatus(event.target.value as CallbackStatus)}
+              style={{
+                minHeight: "36px",
+                minWidth: "130px",
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-subtle)",
+                color: "var(--text-primary)",
+                padding: "0.4rem 0.6rem",
+                borderRadius: "var(--radius-sm)",
+              }}
+            >
+              {(["all", "accepted", "duplicate", "rejected"] as const).map((nextStatus) => (
+                <option key={nextStatus} value={nextStatus}>
+                  {callbackStatusLabel(nextStatus, locale)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(300px, 0.85fr) minmax(420px, 1.4fr)",
+            minHeight: "540px",
+          }}
+        >
+          <div style={{ borderRight: "1px solid var(--border-subtle)", overflowY: "auto", maxHeight: "760px" }}>
+            {isLoading ? (
+              <p style={{ padding: "1rem", color: "var(--text-secondary)" }}>
+                {locale === "zh" ? "加载中" : "Loading"}
+              </p>
+            ) : callbacks.length === 0 ? (
+              <div style={{ padding: "1rem", color: "var(--text-secondary)", display: "grid", gap: "0.45rem" }}>
+                <strong style={{ color: "var(--text-primary)" }}>
+                  {locale === "zh" ? "暂无 OneSignal 回调" : "No OneSignal callbacks yet"}
+                </strong>
+                <span style={{ fontSize: "0.875rem" }}>
+                  {locale === "zh"
+                    ? "只有 OneSignal 实际产生 sent / received / clicked / failed 事件并请求上面的 webhook 后，这里才会出现记录。"
+                    : "Records appear here after OneSignal sends sent, received, clicked, or failed events to the webhook above."}
+                </span>
+              </div>
+            ) : (
+              callbacks.map((callback) => {
+                const isSelected = selectedCallback?.id === callback.id;
+
+                return (
+                  <button
+                    key={callback.id}
+                    type="button"
+                    onClick={() => setSelectedCallbackId(callback.id)}
+                    style={{
+                      width: "100%",
+                      minHeight: "118px",
+                      padding: "1rem",
+                      border: 0,
+                      borderBottom: "1px solid var(--border-subtle)",
+                      background: isSelected ? "var(--accent-glow)" : "transparent",
+                      color: "inherit",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      display: "grid",
+                      gap: "0.45rem",
+                    }}
+                  >
+                    <span style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}>
+                      <span className={callbackStatusClassName(callback.status)}>
+                        {eventTypeLabel(callback.eventType, locale)}
+                      </span>
+                      <span style={{ color: "var(--text-muted)", fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+                        {formatDate(callback.createdAt, locale)}
+                      </span>
+                    </span>
+                    <span style={{ color: "var(--text-primary)", fontSize: "0.92rem", fontWeight: 650 }}>
+                      {callback.eventType}
+                    </span>
+                    <span style={{ color: "var(--text-secondary)", fontSize: "0.8rem" }}>
+                      HTTP {callback.statusCode || "-"} · {callback.durationMs ?? "-"}ms ·{" "}
+                      {callbackStatusLabel(callback.status, locale)}
+                    </span>
+                    <span style={{ color: "var(--text-muted)", fontSize: "0.78rem", wordBreak: "break-all" }}>
+                      {callback.externalId || callback.subscriptionId || callback.messageId || callback.eventId || "-"}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          <div style={{ padding: "1.25rem", overflowY: "auto", display: "grid", gap: "1rem" }}>
+            {selectedCallback ? (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "start" }}>
+                  <div style={{ display: "grid", gap: "0.45rem" }}>
+                    <span className={callbackStatusClassName(selectedCallback.status)}>
+                      {callbackStatusLabel(selectedCallback.status, locale)}
+                    </span>
+                    <h3 style={{ fontSize: "1.15rem" }}>
+                      {eventTypeLabel(selectedCallback.eventType, locale)}
+                    </h3>
+                    <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>
+                      HTTP {selectedCallback.statusCode || "-"} · {selectedCallback.durationMs ?? "-"}ms ·{" "}
+                      {formatDate(selectedCallback.createdAt, locale)}
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem" }}>
+                  {[
+                    [locale === "zh" ? "事件 ID" : "Event ID", selectedCallback.eventId],
+                    [locale === "zh" ? "消息 ID" : "Message ID", selectedCallback.messageId],
+                    [locale === "zh" ? "订阅 ID" : "Subscription ID", selectedCallback.subscriptionId],
+                    [locale === "zh" ? "External ID" : "External ID", selectedCallback.externalId],
+                  ].map(([label, value]) => (
+                    <div
+                      key={String(label)}
+                      style={{
+                        padding: "0.875rem",
+                        border: "1px solid var(--border-subtle)",
+                        borderRadius: "var(--radius-sm)",
+                        background: "var(--bg-secondary)",
+                      }}
+                    >
+                      <p style={{ color: "var(--text-muted)", fontSize: "0.75rem", marginBottom: "0.25rem" }}>
+                        {String(label)}
+                      </p>
+                      <p style={{ color: "var(--text-secondary)", fontSize: "0.82rem", wordBreak: "break-all" }}>
+                        {String(value || "-")}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {selectedCallback.errorMessage ? (
+                  <div className="badge badge-error" style={{ width: "fit-content", borderRadius: "var(--radius-sm)" }}>
+                    {selectedCallback.errorMessage}
+                  </div>
+                ) : null}
+
+                {[
+                  [locale === "zh" ? "OneSignal 请求头" : "OneSignal request headers", selectedCallback.requestHeaders],
+                  [locale === "zh" ? "OneSignal 请求体" : "OneSignal request body", selectedCallback.requestBody],
+                  [locale === "zh" ? "我们返回给 OneSignal" : "Response returned to OneSignal", selectedCallback.response],
+                  [locale === "zh" ? "响应头" : "Response headers", selectedCallback.responseHeaders],
+                ].map(([label, value]) => (
+                  <div key={String(label)} style={{ display: "grid", gap: "0.5rem" }}>
+                    <strong style={{ fontSize: "0.9rem" }}>{String(label)}</strong>
+                    <pre
+                      style={{
+                        maxHeight: "280px",
+                        margin: 0,
+                        padding: "1rem",
+                        borderRadius: "var(--radius-sm)",
+                        border: "1px solid var(--border-subtle)",
+                        background: "var(--bg-secondary)",
+                        color: "var(--text-secondary)",
+                        overflow: "auto",
+                        fontSize: "0.78rem",
+                        lineHeight: 1.55,
+                      }}
+                    >
+                      {jsonBlock(value)}
+                    </pre>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <p style={{ color: "var(--text-secondary)" }}>
+                {locale === "zh" ? "选择一条 OneSignal 回调" : "Select a OneSignal callback"}
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
