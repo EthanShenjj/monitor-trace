@@ -28,6 +28,10 @@ function getRequestHeaders(request) {
 
 function fallbackEventType(body, headers) {
   const event = body && typeof body === "object" && !Array.isArray(body) ? body.event : null;
+  const properties =
+    body && typeof body === "object" && !Array.isArray(body) && body.properties
+      ? body.properties
+      : null;
 
   if (event && typeof event === "object" && !Array.isArray(event) && event.kind) {
     return String(event.kind);
@@ -41,6 +45,9 @@ function fallbackEventType(body, headers) {
     body?.event_kind ||
     body?.event_type ||
     body?.eventType ||
+    body?.["#event_name"] ||
+    properties?.onesignal_event_kind ||
+    properties?.event_kind ||
     headers["x-onesignal-event"] ||
     "unknown"
   );

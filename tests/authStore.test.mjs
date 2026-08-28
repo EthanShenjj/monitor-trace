@@ -862,6 +862,40 @@ test("OneSignal event stream helper normalizes push sent and failed payloads", (
   assert.equal(failed.analytics.failureReason, "Invalid subscription");
 });
 
+test("OneSignal event stream helper accepts ThinkingData track-shaped push callbacks", () => {
+  const input = buildOneSignalEventMessageInput({
+    "#type": "track",
+    "#account_id": "user_123",
+    "#distinct_id": "",
+    "#event_name": "te_ops_onesignal_push_click",
+    "#time": "2026-08-28 18:30:00.000",
+    properties: {
+      "#data_source": "Third_Party",
+      "#data_source_detail": "onesignal",
+      "#ops_receipt_properties": {
+        ops_project_id: "1",
+        ops_request_id: "request_uuid",
+        ops_task_id: "task_uuid",
+        ops_task_instance_id: "instance_uuid",
+        ops_exp_group_id: "group_a",
+      },
+      onesignal_event_id: "evt_001",
+      onesignal_message_id: "0f82021c-e508-4184-963b-1868e2c3cd55",
+      onesignal_app_id: "dbb8017a-3495-402d-9094-e408bd1d6e27",
+      push_provider: "onesignal",
+    },
+  });
+
+  assert.equal(input.provider, "onesignal");
+  assert.equal(input.eventType, "message.push.clicked");
+  assert.equal(input.externalId, "evt_001");
+  assert.equal(input.analytics.eventId, "evt_001");
+  assert.equal(input.analytics.notificationId, "0f82021c-e508-4184-963b-1868e2c3cd55");
+  assert.equal(input.analytics.userId, "user_123");
+  assert.match(input.body, /User: user_123/);
+  assert.match(input.body, /Ops request: request_uuid/);
+});
+
 test("OneSignal helper rejects unsupported events", () => {
   assert.throws(
     () =>
