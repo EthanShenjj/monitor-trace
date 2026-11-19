@@ -13,7 +13,7 @@ export default async function ProtectedLayout({
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   const session = authStore.verifySessionToken(token);
-  const user = session ? await authStore.getUserById(session.userId) : null;
+  const user = session ? await authStore.ensureUserForSession(session.userId) : null;
 
   if (!session || !user) {
     redirect("/login");
