@@ -209,6 +209,29 @@ curl -X POST "https://monitor-trace.vercel.app/api/webhooks/messages" \
 
 Messages are visible on `/messages` for logged-in users. If a batch is partially accepted, `return_code` remains `0` and `data.fail_list` contains failed item indexes starting from `1`, matching ThinkingData's Webhook channel contract.
 
+### MarketLoop Webhook receiver
+
+After deploying this change, configure the following URL in MarketLoop's Channels → Create Webhook channel:
+
+```text
+https://monitor-trace.vercel.app/api/webhooks/marketloop
+```
+
+The endpoint accepts `POST` requests with `Content-Type: application/json` using MarketLoop's outbound event object (not an array). It supports both `marketloop.message` deliveries and the channel's `marketloop.webhook.test` test requests. Messages appear in `/messages` with provider `marketloop`; the subject/body or test message is displayed, and the original payload is preserved.
+
+Authentication is optional. Set `MARKETLOOP_WEBHOOK_SECRET` in this app's server environment to require either `Authorization: Bearer <same-secret>` or `X-Webhook-Secret: <same-secret>` in the MarketLoop channel's Header configuration. This receiver token is separate from MarketLoop's own `MARKETLOOP_WEBHOOK_SECRET`, which encrypts its saved channel headers; the two values do not need to match.
+
+Example channel test request:
+
+```bash
+curl -X POST "https://monitor-trace.vercel.app/api/webhooks/marketloop" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: webhook-test-example-1" \
+  -d '{"id":"webhook-test-example-1","type":"marketloop.webhook.test","channelId":"channel-example","timestamp":"2026-11-19T08:00:00.000Z","data":{"message":"MarketLoop Webhook 测试请求"}}'
+```
+
+When the receiver token is configured, also supply the configured authentication Header. A successful response is HTTP `200` with `{"success":true,"event_id":"...","message_id":"...","duplicate":false}`. Repeating the event ID returns the same message ID with `duplicate:true`, without adding another message. The optional `Idempotency-Key` Header must match the payload's `id`. Payloads over 64 KB return `413`; invalid JSON/events return `400`, invalid credentials return `401`, and storage failures return `503` so MarketLoop does not record a lost message as accepted. This endpoint uses the existing SQLite message store, including its current deployment persistence limits.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
