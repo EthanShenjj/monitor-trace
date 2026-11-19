@@ -3,6 +3,7 @@ import {
   randomBytes,
   randomUUID,
   scrypt as scryptCallback,
+  scryptSync,
   timingSafeEqual,
 } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -12,6 +13,7 @@ import Database from "better-sqlite3";
 
 const scrypt = promisify(scryptCallback);
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+const BUILTIN_ROOT_ID = "builtin-root";
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
@@ -669,6 +671,17 @@ export function createAuthStore({ dbPath, filePath, sessionSecret }) {
           created_at TEXT NOT NULL
         );
       `);
+
+      if (!db.prepare("SELECT 1 FROM users WHERE email = ?").get("root")) {
+        const salt = randomBytes(16).toString("hex");
+        const passwordHash = `scrypt:${salt}:${scryptSync("rootroot", salt, 64).toString("hex")}`;
+
+        db.prepare(`
+          INSERT INTO users (id, name, email, password_hash, created_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(email) DO NOTHING
+        `).run(BUILTIN_ROOT_ID, "root", "root", passwordHash, new Date().toISOString());
+      }
     }
 
     return db;

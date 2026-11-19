@@ -70,7 +70,7 @@ test("registerUser stores a salted hash instead of the plain password", async ()
 
     const rows = await querySqlite(
       dbPath,
-      "select id, name, email, password_hash from users"
+      "select id, name, email, password_hash from users where email = 'ada@example.com'"
     );
     assert.equal(rows.length, 1);
     assert.equal(rows[0].id, user.id);
@@ -114,6 +114,57 @@ test("authenticateUser accepts the right password and rejects the wrong one", as
       store.authenticateUser("lin@example.com", "wrong-password"),
       /Invalid email or password/
     );
+  });
+});
+
+test("the built-in root account authenticates with a stored hash and a real session", async () => {
+  await withStore(async (store, dbPath) => {
+    const user = await store.authenticateUser("root", "rootroot");
+    assert.equal(user.name, "root");
+    assert.equal(user.email, "root");
+    assert.equal("passwordHash" in user, false);
+
+    const rows = await querySqlite(
+      dbPath,
+      "select password_hash from users where email = 'root'"
+    );
+    assert.equal(rows.length, 1);
+    assert.match(rows[0].password_hash, /^scrypt:/);
+    assert.equal((await readFile(dbPath)).includes("rootroot"), false);
+
+    for (const password of ["wrong-password", "", "Rootroot"]) {
+      await assert.rejects(store.authenticateUser("root", password), /Invalid email or password/);
+    }
+    await assert.rejects(store.authenticateUser("root2", "rootroot"), /Invalid email or password/);
+
+    const token = store.createSessionToken(user.id);
+    const session = store.verifySessionToken(token);
+    assert.equal(session?.userId, user.id);
+    assert.deepEqual(await store.getUserById(session.userId), user);
+  });
+});
+
+test("root seeding preserves existing users and stays stable across store instances", async () => {
+  await withStore(async (store, dbPath) => {
+    const registered = await store.registerUser({
+      name: "Existing User",
+      email: "existing@example.com",
+      password: "ExistingPass123",
+    });
+    const root = await store.authenticateUser("root", "rootroot");
+    const [originalRow] = await querySqlite(dbPath, "select * from users where email = 'root'");
+    const reopened = createAuthStore({ dbPath, sessionSecret: "test-secret-that-is-long-enough" });
+
+    assert.deepEqual(await reopened.authenticateUser(" ROOT ", "rootroot"), root);
+    assert.deepEqual(await reopened.authenticateUser(registered.email, "ExistingPass123"), registered);
+    assert.deepEqual(await querySqlite(dbPath, "select * from users where email = 'root'"), [originalRow]);
+
+    const fresh = createAuthStore({
+      dbPath: path.join(path.dirname(dbPath), "fresh.sqlite"),
+      sessionSecret: "test-secret-that-is-long-enough",
+    });
+    const session = fresh.verifySessionToken(store.createSessionToken(root.id));
+    assert.equal((await fresh.getUserById(session.userId))?.name, "root");
   });
 });
 

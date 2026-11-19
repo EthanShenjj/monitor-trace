@@ -382,14 +382,16 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
           )}
 
           <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <span style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>邮箱</span>
+            <span style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>
+              {isRegister ? "邮箱" : "账号或邮箱"}
+            </span>
             <input
               ref={emailInputRef}
-              type="email"
+              type={isRegister ? "email" : "text"}
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
-              autoComplete={openedAfterLogout ? "off" : "email"}
+              autoComplete={openedAfterLogout ? "off" : isRegister ? "email" : "username"}
               name={openedAfterLogout ? "logged-out-email" : "email"}
               className="input-field"
             />

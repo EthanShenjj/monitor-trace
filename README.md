@@ -16,6 +16,8 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+The built-in account is `root` with password `rootroot`. Enter it in the login page's account field; no registration is needed. The account is created automatically in the existing SQLite user store with a salted password hash, and keeps the same internal user ID across server instances.
+
 ## Amplitude Web Experiment
 
 To compare login/register page variants, copy `.env.example` to `.env.local` and set the Amplitude Analytics API key and Experiment deployment key:
