@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE_NAME } from "@/lib/authCookies.mjs";
 import { authStore } from "@/lib/authStore.mjs";
+import { messageStore } from "@/lib/messageStore.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -27,12 +28,12 @@ export async function PATCH(_request, { params }) {
   const { id } = await params;
 
   try {
-    const message = await authStore.markWebhookMessageRead(id);
+    const message = await messageStore.markWebhookMessageRead(id);
     return NextResponse.json({ message });
   } catch (error) {
     return NextResponse.json(
       { error: error?.message || "Unable to update message" },
-      { status: 404 }
+      { status: error?.status === 503 ? 503 : 404 }
     );
   }
 }

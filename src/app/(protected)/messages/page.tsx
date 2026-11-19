@@ -39,6 +39,7 @@ export default function MessagesPage() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
 
   useEffect(() => {
     trackAnalyticsEvent("message_center_viewed", {
@@ -49,10 +50,15 @@ export default function MessagesPage() {
 
   useEffect(() => {
     let isActive = true;
+    let isFetching = false;
 
-    async function loadMessages() {
-      setIsLoading(true);
-      setError(null);
+    async function loadMessages(quiet = false) {
+      if (isFetching) return;
+      isFetching = true;
+      if (!quiet) {
+        setIsLoading(true);
+        setError(null);
+      }
 
       try {
         const response = await fetch(`/api/messages?status=${status}`, {
@@ -73,6 +79,7 @@ export default function MessagesPage() {
         }
 
         const nextMessages = payload?.messages || [];
+        setError(null);
         setMessages(nextMessages);
         setUnreadCount(payload?.unreadCount || 0);
         setSelectedMessageId((currentId) => {
@@ -92,14 +99,16 @@ export default function MessagesPage() {
           : undefined;
         const failureReason = loadError instanceof Error ? loadError.message : "Unable to load messages";
 
-        trackAnalyticsEvent("message_load_failed", {
-          platform: "web",
-          status_filter: status,
-          status_code: statusCode,
-          failure_reason: failureReason,
-        });
+        if (!quiet) {
+          trackAnalyticsEvent("message_load_failed", {
+            platform: "web",
+            status_filter: status,
+            status_code: statusCode,
+            failure_reason: failureReason,
+          });
+        }
 
-        if (statusCode) {
+        if (statusCode && !quiet) {
           trackAnalyticsEvent("api_request_failed", {
             platform: "web",
             api_path: "/api/messages",
@@ -117,6 +126,7 @@ export default function MessagesPage() {
               : "Unable to load messages"
         );
       } finally {
+        isFetching = false;
         if (isActive) {
           setIsLoading(false);
         }
@@ -125,10 +135,20 @@ export default function MessagesPage() {
 
     loadMessages();
 
+    const refreshVisibleMessages = () => {
+      if (document.visibilityState === "visible") void loadMessages(true);
+    };
+    const refreshInterval = window.setInterval(refreshVisibleMessages, 5000);
+    window.addEventListener("focus", refreshVisibleMessages);
+    document.addEventListener("visibilitychange", refreshVisibleMessages);
+
     return () => {
       isActive = false;
+      window.clearInterval(refreshInterval);
+      window.removeEventListener("focus", refreshVisibleMessages);
+      document.removeEventListener("visibilitychange", refreshVisibleMessages);
     };
-  }, [locale, status]);
+  }, [locale, status, refreshVersion]);
 
   const selectedMessage = useMemo(
     () => messages.find((message) => message.id === selectedMessageId) || messages[0] || null,
@@ -211,7 +231,7 @@ export default function MessagesPage() {
 
   return (
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
         <div>
           <h1 style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>{t("messages")}</h1>
           <p style={{ color: "var(--text-secondary)" }}>
@@ -219,6 +239,15 @@ export default function MessagesPage() {
           </p>
         </div>
 
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => setRefreshVersion(value => value + 1)}
+            disabled={isLoading}
+          >
+            {locale === "zh" ? "刷新消息" : "Refresh messages"}
+          </button>
         <div
           style={{
             display: "inline-grid",
@@ -256,6 +285,7 @@ export default function MessagesPage() {
                   : "Unread"}
             </button>
           ))}
+        </div>
         </div>
       </div>
 
@@ -301,7 +331,9 @@ export default function MessagesPage() {
               </p>
             ) : messages.length === 0 ? (
               <p style={{ padding: "1rem", color: "var(--text-secondary)" }}>
-                {locale === "zh" ? "暂无消息" : "No messages"}
+                {error
+                  ? locale === "zh" ? "暂时无法读取消息，请点击刷新重试" : "Unable to load messages. Please refresh to retry."
+                  : locale === "zh" ? "暂无消息" : "No messages"}
               </p>
             ) : (
               messages.map((message) => {

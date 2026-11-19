@@ -4,9 +4,9 @@ import { handleWebhookMessages } from "@/lib/webhookMessages.mjs";
 export const dynamic = "force-dynamic";
 
 async function createWebhookMessage(input) {
-  const { authStore } = await import("@/lib/authStore.mjs");
+  const { messageStore } = await import("@/lib/messageStore.mjs");
 
-  return authStore.createWebhookMessage(input);
+  return messageStore.createWebhookMessage(input);
 }
 
 async function trackWebhookMessage({

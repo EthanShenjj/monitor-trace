@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE_NAME } from "@/lib/authCookies.mjs";
 import { authStore } from "@/lib/authStore.mjs";
+import { messageStore } from "@/lib/messageStore.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,15 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status") === "unread" ? "unread" : "all";
   const limit = searchParams.get("limit") || 100;
-  const result = await authStore.listWebhookMessages({ status, limit });
+  let result;
+  try {
+    result = await messageStore.listWebhookMessages({ status, limit });
+  } catch {
+    return NextResponse.json(
+      { error: "Message storage is temporarily unavailable" },
+      { status: 503, headers: { "Cache-Control": "no-store" } }
+    );
+  }
 
   return NextResponse.json(result, {
     headers: {

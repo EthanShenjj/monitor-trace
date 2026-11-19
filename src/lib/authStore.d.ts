@@ -78,5 +78,14 @@ export function createAuthStore(options: {
   verifySessionToken(token?: string): { userId: string; iat: number; exp: number } | null;
 };
 
+export function normalizeWebhookPayload(input?: Record<string, unknown>): {
+  provider: string;
+  externalId: string | null;
+  eventType: string;
+  title: string;
+  body: string;
+  rawPayload: string;
+};
+
 export function getDefaultAuthStore(): ReturnType<typeof createAuthStore>;
 export const authStore: ReturnType<typeof createAuthStore>;

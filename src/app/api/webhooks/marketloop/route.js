@@ -6,8 +6,8 @@ export async function POST(request) {
   return handleMarketLoopWebhookRequest(request, {
     secret: process.env.MARKETLOOP_WEBHOOK_SECRET || "",
     async createWebhookMessage(input) {
-      const { authStore } = await import("@/lib/authStore.mjs");
-      return authStore.createWebhookMessage(input);
+      const { messageStore } = await import("@/lib/messageStore.mjs");
+      return messageStore.createWebhookMessage(input);
     },
   });
 }

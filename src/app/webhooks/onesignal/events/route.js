@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { authStore } from "@/lib/authStore.mjs";
+import { messageStore } from "@/lib/messageStore.mjs";
 import { buildOneSignalEventMessageInput } from "@/lib/onesignalWebhook.mjs";
 import { trackServerThinkingDataEvent } from "@/lib/serverAnalytics.mjs";
 
@@ -150,7 +151,7 @@ export async function POST(request) {
 
   try {
     const input = buildOneSignalEventMessageInput(body, requestHeaders);
-    const { message, duplicate } = await authStore.createWebhookMessage(input);
+    const { message, duplicate } = await messageStore.createWebhookMessage(input);
     const statusCode = duplicate ? 200 : 201;
     const response = {
       received: true,
@@ -196,6 +197,7 @@ export async function POST(request) {
 
     return jsonResponse(response, { status: statusCode });
   } catch (error) {
+    const statusCode = error?.status === 503 ? 503 : 400;
     const response = {
       received: false,
       error: error?.message || "Unable to process OneSignal push event",
@@ -207,13 +209,13 @@ export async function POST(request) {
       requestHeaders,
       response,
       status: "rejected",
-      statusCode: 400,
+      statusCode,
       startedAt,
     });
 
     return jsonResponse(
       response,
-      { status: 400 }
+      { status: statusCode }
     );
   }
 }

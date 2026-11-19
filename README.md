@@ -189,6 +189,8 @@ Identity rules:
 
 ## Webhook Message Center
 
+Production messages use shared PostgreSQL storage through the server-only `MESSAGE_DATABASE_URL`, `DATABASE_URL`, or `POSTGRES_URL`. An already-connected Vercel PostgreSQL database can be reused. See [Shared PostgreSQL message storage](docs/postgres-message-store.md) for schema setup, verification, and migration of existing messages. Local development can still use SQLite.
+
 ThinkingData AE Webhook channels can push batched JSON messages directly to `/api/webhooks/messages`. The endpoint accepts the documented JSON Array request body, returns ThinkingData's strict success response shape for valid messages, and then best-effort stores each message in SQLite with `#ops_receipt_properties` preserved in the raw payload:
 
 ```json
@@ -232,7 +234,7 @@ curl -X POST "https://monitor-trace.vercel.app/api/webhooks/marketloop" \
   -d '{"id":"webhook-test-example-1","type":"marketloop.webhook.test","channelId":"channel-example","timestamp":"2026-11-19T08:00:00.000Z","data":{"message":"MarketLoop Webhook 测试请求"}}'
 ```
 
-When the receiver token is configured, also supply the configured authentication Header. A successful response is HTTP `200` with `{"success":true,"event_id":"...","message_id":"...","duplicate":false}`. Repeating the event ID returns the same message ID with `duplicate:true`, without adding another message. The optional `Idempotency-Key` Header must match the payload's `id`. Payloads over 64 KB return `413`; invalid JSON/events return `400`, invalid credentials return `401`, and storage failures return `503` so MarketLoop does not record a lost message as accepted. This endpoint uses the existing SQLite message store, including its current deployment persistence limits.
+When the receiver token is configured, also supply the configured authentication Header. A successful response is HTTP `200` with `{"success":true,"event_id":"...","message_id":"...","duplicate":false}`. Repeating the event ID returns the same message ID with `duplicate:true`, without adding another message. The optional `Idempotency-Key` Header must match the payload's `id`. Payloads over 64 KB return `413`; invalid JSON/events return `400`, invalid credentials return `401`, and storage failures return `503` so MarketLoop does not record a lost message as accepted. In production, the receiver and message-center APIs share PostgreSQL storage.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

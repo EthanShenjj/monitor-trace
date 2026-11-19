@@ -185,7 +185,7 @@ function toNullableString(value) {
   return clean.length > 0 ? clean : null;
 }
 
-function normalizeWebhookPayload(input = {}) {
+export function normalizeWebhookPayload(input = {}) {
   const rawPayload = input.rawPayload ?? {};
   const body =
     typeof rawPayload === "object" && rawPayload !== null && !Array.isArray(rawPayload)
