@@ -23,6 +23,10 @@ export async function GET() {
     {
       mixpanelToken: process.env.NEXT_PUBLIC_MIXPANEL_TOKEN || null,
       recordSessionsPercent: getReplaySampleRate(),
+      thinkingDataTestAppId: process.env.THINKINGDATA_TEST_APP_ID || null,
+      thinkingDataTestServerUrl: process.env.THINKINGDATA_TEST_SERVER_URL
+        ? "/"
+        : null,
       thinkingDataAppId:
         process.env.NEXT_PUBLIC_THINKINGDATA_APP_ID ||
         process.env.THINKINGDATA_APP_ID ||

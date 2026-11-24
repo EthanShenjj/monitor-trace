@@ -30,7 +30,7 @@ export async function GET(request) {
   const limit = searchParams.get("limit") || 100;
   let result;
   try {
-    result = await messageStore.listWebhookMessages({ status, limit });
+    result = await messageStore.listWebhookMessages({ userId: user.id, status, limit });
   } catch {
     return NextResponse.json(
       { error: "Message storage is temporarily unavailable" },
@@ -38,7 +38,7 @@ export async function GET(request) {
     );
   }
 
-  return NextResponse.json(result, {
+  return NextResponse.json({ ...result, recipient: { id: user.id, email: user.email } }, {
     headers: {
       "Cache-Control": "no-store, max-age=0",
     },

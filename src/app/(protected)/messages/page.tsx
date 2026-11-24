@@ -37,6 +37,7 @@ export default function MessagesPage() {
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [status, setStatus] = useState<MessageStatus>("all");
   const [unreadCount, setUnreadCount] = useState(0);
+  const [recipient, setRecipient] = useState<{ id: string; email: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
@@ -82,6 +83,7 @@ export default function MessagesPage() {
         setError(null);
         setMessages(nextMessages);
         setUnreadCount(payload?.unreadCount || 0);
+        setRecipient(payload?.recipient || null);
         setSelectedMessageId((currentId) => {
           if (currentId && nextMessages.some((message: WebhookMessage) => message.id === currentId)) {
             return currentId;
@@ -237,6 +239,11 @@ export default function MessagesPage() {
           <p style={{ color: "var(--text-secondary)" }}>
             {locale === "zh" ? `${unreadCount} 条未读消息` : `${unreadCount} unread messages`}
           </p>
+          {recipient && <details style={{ marginTop: "0.75rem", color: "var(--text-secondary)", fontSize: "0.875rem" }}>
+            <summary>{locale === "zh" ? "当前收件账号" : "Receiving account"}: {recipient.email}</summary>
+            <p style={{ marginTop: "0.5rem" }}>{locale === "zh" ? "账号 ID（用于 Webhook 收件绑定）" : "Account ID for Webhook recipient mapping"}</p>
+            <input aria-label={locale === "zh" ? "收件账号 ID" : "Recipient account ID"} readOnly value={recipient.id} onFocus={event => event.target.select()} style={{ width: "100%", marginTop: "0.25rem", color: "var(--text-primary)", background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "0.5rem" }} />
+          </details>}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>

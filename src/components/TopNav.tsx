@@ -4,7 +4,7 @@ import { useApp } from '@/context/AppContext';
 import { identifyAnalyticsUser, resetAnalytics, trackAnalyticsEvent } from '@/lib/analytics';
 import { identifyAmplitudeUser } from '@/lib/amplitude';
 import { resetOneSignalUser } from '@/lib/onesignal';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import OneSignalPushButton from './OneSignalPushButton';
 
@@ -15,12 +15,15 @@ type TopNavUser = {
   createdAt?: string;
 };
 
-export default function TopNav({ user }: { user: TopNavUser }) {
+export default function TopNav({ user }: { user: TopNavUser | null }) {
   const { theme, toggleTheme, locale, toggleLocale, t } = useApp();
-  const router = useRouter();
   const [selectedProject, setSelectedProject] = useState('Customer Support Agent');
 
   useEffect(() => {
+    if (!user) {
+      return;
+    }
+
     identifyAmplitudeUser(user.id);
     identifyAnalyticsUser(user.id, user);
   }, [user]);
@@ -34,8 +37,7 @@ export default function TopNav({ user }: { user: TopNavUser }) {
     } finally {
       await resetOneSignalUser();
       resetAnalytics();
-      router.replace('/login?logged_out=1');
-      router.refresh();
+      window.location.replace('/');
     }
   };
 
@@ -95,9 +97,17 @@ export default function TopNav({ user }: { user: TopNavUser }) {
         >
           {t('docs')}
         </button>
-        <OneSignalPushButton userId={user.id} locale={locale} />
-        <button className="btn btn-outline" onClick={handleLogout} style={{ padding: '0.5rem 1rem' }}>{t('logout')}</button>
-        <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>U</div>
+        {user ? (
+          <>
+            <OneSignalPushButton userId={user.id} locale={locale} />
+            <button className="btn btn-outline" onClick={handleLogout} style={{ padding: '0.5rem 1rem' }}>{t('logout')}</button>
+            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>U</div>
+          </>
+        ) : (
+          <Link href="/login" className="btn btn-primary" style={{ padding: '0.5rem 1rem' }}>
+            {t('login')}
+          </Link>
+        )}
       </div>
     </header>
   );

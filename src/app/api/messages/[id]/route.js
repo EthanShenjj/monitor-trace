@@ -28,7 +28,7 @@ export async function PATCH(_request, { params }) {
   const { id } = await params;
 
   try {
-    const message = await messageStore.markWebhookMessageRead(id);
+    const message = await messageStore.markWebhookMessageRead(id, user.id);
     return NextResponse.json({ message });
   } catch (error) {
     return NextResponse.json(

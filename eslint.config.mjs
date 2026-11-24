@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Unmodified third-party release bundles.
+    "public/vendor/*.umd.min.js",
   ]),
 ]);
 

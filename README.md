@@ -128,6 +128,47 @@ THINKINGDATA_SERVER_URL="https://web-ta-demo.thinkingdata.cn/"
 Mixpanel is initialized once in `src/lib/mixpanel.ts`; ThinkingData browser analytics are initialized in `src/lib/thinkingdata.ts`; server-side webhook events use `thinkingdata-node` through `src/lib/serverAnalytics.mjs`. Feature code should use `trackAnalyticsEvent`, `identifyAnalyticsUser`, and `resetAnalytics` instead of importing analytics SDKs directly.
 Session Replay is enabled from the same Mixpanel initialization. Start with `100` while verifying replay capture, then lower the sample rate for production traffic.
 
+## ThinkingData Content UI
+
+`td-content-ui-js@0.1.0` is installed from `vendor/td-content-ui-js-0.1.0.tgz`, built with `npm ci --include=dev` and `npm pack` from [the SDK repository](https://gitlab.thinkingdata.cn/thinking-analytics/data-collector/client-sdk/td-content-ui-js) at commit `3a1aa22a71edf76b5b09ce34308c1afb0586df35`. The repository does not include its `dist` entry points, so the built archive is included here to make `npm ci` reproducible without access to GitLab.
+
+The root layout initializes the shared ThinkingData Analytics instance and exposes `window.TDContentUI` after hydration. Test sessions additionally initialize Remote Config and Strategy. Strategy's `triggerListener` passes the received `content.inAppMessage` to the renderer. The renderer supports the five documented template types; navigation and dismiss actions are handled by the UI SDK, and “suppress today” is stored for the current device/task. SDK release sources are recorded in `public/vendor/README.md`.
+
+### Hermes client-channel send test
+
+Set the server-only test-environment configuration locally and in the deployment environment:
+
+```dotenv
+THINKINGDATA_TEST_APP_ID=debug-appid
+THINKINGDATA_TEST_SERVER_URL=https://your-sdk-receiver.example.com
+```
+
+The test receiver must belong to the same environment as the Hermes backend. A private address such as `http://10.82.6.125:8991` works only when the Next.js server can reach that network; Vercel needs a reachable receiver or an HTTPS relay to it. The Hermes settings-page URL is not the SDK receiver URL.
+
+1. Open `/client-messages`. Copy the complete device ID, add it in Hermes → Client channel → Send test → Add device, and select that device.
+2. Enable test mode. This sets `td_debug=1` for the current tab/session and reloads the page. Wait for the connection to succeed; if the device was registered after enabling test mode, reconnect once.
+3. Keep the product page open and send a template from Hermes. Remote Config polls debug tasks every five seconds; “Fetch now” also requests the latest tasks. Strategy handles channel-test tasks automatically and the received template appears as a popup.
+4. Exit test mode after testing. Normal browser sessions continue using the existing analytics project and do not use the test receiver.
+
+Debug requests use same-origin `/v1/remote-config/*`, `/sync_js` and `/data_debug` paths, rewritten to the `/api/thinkingdata/sdk/` proxy because these SDKs normalize their server URL to its origin. The proxy forwards only the SDK config, fetch and event endpoints; preserves request/response signatures; and omits browser cookies and authorization headers. The test receiver's internal URL stays server-side. The test page shows connection errors, the last successful fetch and the last displayed task.
+
+For a temporary test against a receiver reachable only from a developer's machine, `scripts/thinkingdata-test-relay.mjs` provides a loopback-only relay with a required secret and the same SDK endpoint allowlist. Configure the three `THINKINGDATA_TEST_*` variables on that machine and run it with Node.js. An approved HTTPS tunnel can forward to port 4318; Vercel then uses the tunnel URL as `THINKINGDATA_TEST_SERVER_URL` and the same secret as `THINKINGDATA_TEST_RELAY_TOKEN`. Both the local relay and tunnel must remain running. A permanent deployment should use a stable, reachable SDK receiver instead.
+
+Client components can also import the SDK directly. Call `show` from an event handler or effect once `document.body` is available:
+
+```ts
+import { contentUI } from "td-content-ui-js";
+
+const handle = contentUI.show({
+  template: { id: "modal_image_text", version: 1 },
+  data: { title: "Welcome", body: "Your message content" },
+});
+
+await handle.ready;
+// Close the message when needed:
+handle.close();
+```
+
 ## OneSignal Web Push
 
 The app loads the OneSignal Web SDK from the official CDN and serves the required service worker files from `public/`:

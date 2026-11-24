@@ -17,7 +17,9 @@ No database credential belongs in `NEXT_PUBLIC_` variables. The existing signup/
 
 ## Behavior
 
-MarketLoop, ThinkingData AE, and OneSignal inbound messages share the PostgreSQL message table with the list and mark-read APIs. Provider and external ID enforce deduplication in PostgreSQL, including concurrent requests. Raw payloads are stored as JSONB. Marking a message read preserves its first read timestamp.
+MarketLoop, ThinkingData AE, and OneSignal inbound messages use the PostgreSQL message table with the list and mark-read APIs. Each visible message has a server-established `recipient_user_id`; list, unread counts and mark-read are scoped to the authenticated account. Messages without ownership remain stored but hidden. Configure the MarketLoop account mapping and apply the ownership migration as described in [recipient isolation](marketloop-recipient-isolation.md).
+
+Provider and external ID enforce deduplication in PostgreSQL, including concurrent requests. A replay for a different recipient is rejected rather than transferring the existing message. Raw payloads are stored as JSONB. Marking a message read preserves its first read timestamp.
 
 On Vercel, missing or unavailable PostgreSQL storage returns an explicit error instead of falling back to another temporary SQLite file or presenting a false empty inbox. Local development without a configured PostgreSQL URL can continue using the existing SQLite store.
 

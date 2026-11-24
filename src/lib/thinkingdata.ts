@@ -14,6 +14,7 @@ type ThinkingDataBrowser = {
   login: (accountId: string) => void;
   logout: (isChangeId?: boolean) => void;
   userSet: (userProperties: object, callback?: (error?: unknown) => void) => void;
+  getDeviceId: () => string;
 };
 
 type RuntimeAnalyticsConfig = {
@@ -21,6 +22,8 @@ type RuntimeAnalyticsConfig = {
   thinkingDataServerUrl?: string;
   mixpanelToken?: string;
   recordSessionsPercent?: number;
+  thinkingDataTestAppId?: string;
+  thinkingDataTestServerUrl?: string;
 };
 
 type ThinkingDataUserProfile = {
@@ -38,6 +41,29 @@ let isInitialized = false;
 let initPromise: Promise<boolean> | null = null;
 let runtimeConfigPromise: Promise<RuntimeAnalyticsConfig> | null = null;
 let thinkingDataClient: ThinkingDataBrowser | null = null;
+let activeConnection: { appId: string; serverUrl: string; debug: boolean } | null = null;
+
+const debugStorageKey = "monitor_thinkingdata_debug";
+
+export function isThinkingDataDebugEnabled() {
+  if (typeof window === "undefined") return false;
+  try {
+    const parameter = new URLSearchParams(window.location.search).get("td_debug");
+    if (parameter === "1" || parameter === "0") {
+      window.sessionStorage.setItem(debugStorageKey, parameter);
+    }
+    return window.sessionStorage.getItem(debugStorageKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setThinkingDataDebugEnabled(enabled: boolean) {
+  window.sessionStorage.setItem(debugStorageKey, enabled ? "1" : "0");
+  const url = new URL(window.location.href);
+  url.searchParams.set("td_debug", enabled ? "1" : "0");
+  window.location.assign(url.href);
+}
 
 function cleanProperties(properties: MixpanelProperties = {}) {
   return Object.fromEntries(
@@ -117,6 +143,8 @@ async function getRuntimeConfig() {
           thinkingDataServerUrl?: unknown;
           mixpanelToken?: unknown;
           recordSessionsPercent?: unknown;
+          thinkingDataTestAppId?: unknown;
+          thinkingDataTestServerUrl?: unknown;
         };
 
         return {
@@ -124,6 +152,8 @@ async function getRuntimeConfig() {
           thinkingDataServerUrl: asNonEmptyString(payload.thinkingDataServerUrl) || undefined,
           mixpanelToken: asNonEmptyString(payload.mixpanelToken) || undefined,
           recordSessionsPercent: getReplaySampleRate(payload.recordSessionsPercent),
+          thinkingDataTestAppId: asNonEmptyString(payload.thinkingDataTestAppId) || undefined,
+          thinkingDataTestServerUrl: asNonEmptyString(payload.thinkingDataTestServerUrl) || undefined,
         };
       })
       .catch(() => ({}));
@@ -165,21 +195,27 @@ export async function initThinkingData() {
   if (!initPromise) {
     initPromise = (async () => {
       const runtimeConfig = await getRuntimeConfig();
-      const appId = asNonEmptyString(appIdFromEnv) || runtimeConfig.thinkingDataAppId || defaultAppId;
-      const serverUrl =
+      const debug = isThinkingDataDebugEnabled();
+      const appId = debug
+        ? runtimeConfig.thinkingDataTestAppId
+        : asNonEmptyString(appIdFromEnv) || runtimeConfig.thinkingDataAppId || defaultAppId;
+      const configuredServerUrl = debug ? runtimeConfig.thinkingDataTestServerUrl :
         asNonEmptyString(serverUrlFromEnv) ||
         runtimeConfig.thinkingDataServerUrl ||
         defaultServerUrl;
 
-      if (!appId) {
-        return false;
+      if (!appId || !configuredServerUrl) {
+        throw new Error("测试环境未配置 App ID 或 SDK 接收地址，请配置 THINKINGDATA_TEST_APP_ID 和 THINKINGDATA_TEST_SERVER_URL。");
       }
+      const serverUrl = new URL(configuredServerUrl, window.location.origin).href.replace(/\/$/, "");
 
       const client = await getThinkingDataClient();
 
       client.init({
         appId,
         serverUrl,
+        mode: debug ? "debug" : "normal",
+        disableRConfig: true,
         send_method: "ajax",
         autoTrack: {
           pageShow: false,
@@ -194,6 +230,7 @@ export async function initThinkingData() {
         platform: "web",
       });
       isInitialized = true;
+      activeConnection = { appId, serverUrl, debug };
 
       if (window.sessionStorage.getItem(configLoadedKey) !== "true") {
         window.sessionStorage.setItem(configLoadedKey, "true");
@@ -218,6 +255,11 @@ export async function initThinkingData() {
   }
 
   return initPromise;
+}
+
+export async function getThinkingDataConnection() {
+  if (!(await initThinkingData()) || !activeConnection) return null;
+  return { ...activeConnection, client: await getThinkingDataClient() };
 }
 
 export async function trackThinkingDataEvent(

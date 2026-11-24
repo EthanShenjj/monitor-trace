@@ -10,6 +10,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import Database from "better-sqlite3";
+import { messageRecipientId, assertSameMessageRecipient } from "./messageRecipients.mjs";
 
 const scrypt = promisify(scryptCallback);
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -225,6 +226,7 @@ export function normalizeWebhookPayload(input = {}) {
   return {
     provider,
     externalId,
+    recipientUserId: messageRecipientId(input.recipientUserId, { required: false }),
     eventType,
     title: title.slice(0, 240),
     body: messageBody.slice(0, 4000),
@@ -672,6 +674,17 @@ export function createAuthStore({ dbPath, filePath, sessionSecret }) {
         );
       `);
 
+      // Old, unassigned messages remain stored but are excluded from every account inbox.
+      if (!db.prepare("PRAGMA table_info(webhook_messages)").all().some(column => column.name === "recipient_user_id")) {
+        db.exec("ALTER TABLE webhook_messages ADD COLUMN recipient_user_id TEXT CHECK (length(recipient_user_id) BETWEEN 1 AND 160)");
+      }
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS webhook_messages_recipient_created_idx
+          ON webhook_messages (recipient_user_id, created_at DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS webhook_messages_recipient_unread_idx
+          ON webhook_messages (recipient_user_id, created_at DESC, id DESC) WHERE read_at IS NULL;
+      `);
+
       if (!db.prepare("SELECT 1 FROM users WHERE email = ?").get("root")) {
         const salt = randomBytes(16).toString("hex");
         const passwordHash = `scrypt:${salt}:${scryptSync("rootroot", salt, 64).toString("hex")}`;
@@ -898,123 +911,53 @@ export function createAuthStore({ dbPath, filePath, sessionSecret }) {
       const database = getDb();
 
       if (clean.externalId) {
-        const existing = database
-          .prepare(
-            `
-              SELECT id, provider, external_id, event_type, title, body, raw_payload, read_at, created_at
-              FROM webhook_messages
-              WHERE provider = ? AND external_id = ?
-            `
-          )
-          .get(clean.provider, clean.externalId);
-
+        const existing = database.prepare(`
+          SELECT * FROM webhook_messages WHERE provider = ? AND external_id = ?
+        `).get(clean.provider, clean.externalId);
         if (existing) {
+          assertSameMessageRecipient(existing.recipient_user_id, clean.recipientUserId);
           return { message: publicWebhookMessage(existing), duplicate: true };
         }
       }
 
-      const now = new Date().toISOString();
-      const message = {
-        id: randomUUID(),
-        provider: clean.provider,
-        externalId: clean.externalId,
-        eventType: clean.eventType,
-        title: clean.title,
-        body: clean.body,
-        rawPayload: clean.rawPayload,
-        readAt: null,
-        createdAt: now,
-      };
-
-      database
-        .prepare(
-          `
-            INSERT INTO webhook_messages (
-              id,
-              provider,
-              external_id,
-              event_type,
-              title,
-              body,
-              raw_payload,
-              read_at,
-              created_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `
-        )
-        .run(
-          message.id,
-          message.provider,
-          message.externalId,
-          message.eventType,
-          message.title,
-          message.body,
-          message.rawPayload,
-          message.readAt,
-          message.createdAt
-        );
-
+      const id = randomUUID(), now = new Date().toISOString();
+      database.prepare(`
+        INSERT INTO webhook_messages (
+          id, provider, external_id, event_type, title, body, raw_payload,
+          recipient_user_id, read_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+      `).run(id, clean.provider, clean.externalId, clean.eventType, clean.title,
+        clean.body, clean.rawPayload, clean.recipientUserId, now);
+      const message = database.prepare("SELECT * FROM webhook_messages WHERE id = ?").get(id);
       return { message: publicWebhookMessage(message), duplicate: false };
     },
 
-    async listWebhookMessages({ status = "all", limit = 100 } = {}) {
-      const database = getDb();
+    async listWebhookMessages({ userId, status = "all", limit = 100 } = {}) {
+      const recipient = messageRecipientId(userId), database = getDb();
       const cleanLimit = Math.min(200, Math.max(1, Number.parseInt(String(limit), 10) || 100));
-      const whereClause = status === "unread" ? "WHERE read_at IS NULL" : "";
-      const messages = database
-        .prepare(
-          `
-            SELECT id, provider, external_id, event_type, title, body, raw_payload, read_at, created_at
-            FROM webhook_messages
-            ${whereClause}
-            ORDER BY created_at DESC
-            LIMIT ?
-          `
-        )
-        .all(cleanLimit)
-        .map(publicWebhookMessage);
-      const unreadCount = database
-        .prepare("SELECT COUNT(*) AS count FROM webhook_messages WHERE read_at IS NULL")
-        .get().count;
-
+      const messages = database.prepare(`
+        SELECT * FROM webhook_messages
+        WHERE recipient_user_id = ? AND (? = 0 OR read_at IS NULL)
+        ORDER BY created_at DESC, id DESC LIMIT ?
+      `).all(recipient, status === "unread" ? 1 : 0, cleanLimit).map(publicWebhookMessage);
+      const unreadCount = database.prepare(`
+        SELECT COUNT(*) AS count FROM webhook_messages WHERE recipient_user_id = ? AND read_at IS NULL
+      `).get(recipient).count;
       return { messages, unreadCount };
     },
 
-    async markWebhookMessageRead(messageId) {
-      const cleanId = toNullableString(messageId);
-
-      if (!cleanId) {
-        throw new Error("Message ID is required");
-      }
-
-      const database = getDb();
-      const now = new Date().toISOString();
-      const result = database
-        .prepare(
-          `
-            UPDATE webhook_messages
-            SET read_at = COALESCE(read_at, ?)
-            WHERE id = ?
-          `
-        )
-        .run(now, cleanId);
-
-      if (result.changes === 0) {
-        throw new Error("Message not found");
-      }
-
-      const message = database
-        .prepare(
-          `
-            SELECT id, provider, external_id, event_type, title, body, raw_payload, read_at, created_at
-            FROM webhook_messages
-            WHERE id = ?
-          `
-        )
-        .get(cleanId);
-
-      return publicWebhookMessage(message);
+    async markWebhookMessageRead(messageId, userId) {
+      const recipient = messageRecipientId(userId), cleanId = toNullableString(messageId);
+      if (!cleanId) throw new Error("Message ID is required");
+      const database = getDb(), now = new Date().toISOString();
+      const result = database.prepare(`
+        UPDATE webhook_messages SET read_at = COALESCE(read_at, ?)
+        WHERE id = ? AND recipient_user_id = ?
+      `).run(now, cleanId, recipient);
+      if (result.changes === 0) throw new Error("Message not found");
+      return publicWebhookMessage(database.prepare(`
+        SELECT * FROM webhook_messages WHERE id = ? AND recipient_user_id = ?
+      `).get(cleanId, recipient));
     },
 
     async recordWebhookPushAttempt(input) {

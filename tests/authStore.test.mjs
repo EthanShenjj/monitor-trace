@@ -459,6 +459,7 @@ test("webhook handler acknowledges valid Hermes messages when persistence fails"
 test("listWebhookMessages and markWebhookMessageRead track unread state", async () => {
   await withStore(async (store) => {
     const first = await store.createWebhookMessage({
+      recipientUserId: "owner-a",
       provider: "github",
       externalId: "delivery-1",
       eventType: "issue_opened",
@@ -467,6 +468,7 @@ test("listWebhookMessages and markWebhookMessageRead track unread state", async 
       rawPayload: { action: "opened" },
     });
     await store.createWebhookMessage({
+      recipientUserId: "owner-a",
       provider: "github",
       externalId: "delivery-2",
       eventType: "issue_closed",
@@ -475,14 +477,14 @@ test("listWebhookMessages and markWebhookMessageRead track unread state", async 
       rawPayload: { action: "closed" },
     });
 
-    const beforeRead = await store.listWebhookMessages({ status: "unread" });
+    const beforeRead = await store.listWebhookMessages({ userId: "owner-a", status: "unread" });
     assert.equal(beforeRead.unreadCount, 2);
     assert.equal(beforeRead.messages.length, 2);
 
-    const marked = await store.markWebhookMessageRead(first.message.id);
+    const marked = await store.markWebhookMessageRead(first.message.id, "owner-a");
     assert.ok(marked.readAt);
 
-    const afterRead = await store.listWebhookMessages({ status: "unread" });
+    const afterRead = await store.listWebhookMessages({ userId: "owner-a", status: "unread" });
     assert.equal(afterRead.unreadCount, 1);
     assert.equal(afterRead.messages.length, 1);
     assert.equal(afterRead.messages[0].externalId, "delivery-2");

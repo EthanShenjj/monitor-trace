@@ -62,6 +62,7 @@ export function createAuthStore(options: {
     source?: string;
   }): Promise<PublicEventConfiguration>;
   createWebhookMessage(input: {
+    recipientUserId?: string;
     provider?: string;
     externalId?: string;
     eventType?: string;
@@ -69,11 +70,12 @@ export function createAuthStore(options: {
     body?: string;
     rawPayload?: Record<string, unknown>;
   }): Promise<{ message: PublicWebhookMessage; duplicate: boolean }>;
-  listWebhookMessages(input?: {
+  listWebhookMessages(input: {
+    userId: string;
     status?: "all" | "unread";
     limit?: number;
   }): Promise<{ messages: PublicWebhookMessage[]; unreadCount: number }>;
-  markWebhookMessageRead(messageId: string): Promise<PublicWebhookMessage>;
+  markWebhookMessageRead(messageId: string, userId: string): Promise<PublicWebhookMessage>;
   createSessionToken(userId: string): string;
   verifySessionToken(token?: string): { userId: string; iat: number; exp: number } | null;
 };
@@ -81,6 +83,7 @@ export function createAuthStore(options: {
 export function normalizeWebhookPayload(input?: Record<string, unknown>): {
   provider: string;
   externalId: string | null;
+  recipientUserId: string | null;
   eventType: string;
   title: string;
   body: string;

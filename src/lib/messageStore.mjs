@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { authStore, normalizeWebhookPayload } from "./authStore.mjs";
+import { messageRecipientId, assertSameMessageRecipient } from "./messageRecipients.mjs";
 
 class MessageStorageError extends Error {
   constructor(message, status = 503, cause) {
@@ -57,8 +58,8 @@ export function createPostgresMessageStore({ connectionString, queryable } = {})
     async createWebhookMessage(input) {
       const clean = normalizeWebhookPayload(input);
       const inserted = await query(
-        "INSERT INTO monitor_trace.webhook_messages (id, provider, external_id, event_type, title, body, raw_payload) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) ON CONFLICT (provider, external_id) DO NOTHING RETURNING *",
-        [randomUUID(), clean.provider, clean.externalId, clean.eventType, clean.title, clean.body, clean.rawPayload]
+        "INSERT INTO monitor_trace.webhook_messages (id, provider, external_id, event_type, title, body, raw_payload, recipient_user_id) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8) ON CONFLICT (provider, external_id) DO NOTHING RETURNING *",
+        [randomUUID(), clean.provider, clean.externalId, clean.eventType, clean.title, clean.body, clean.rawPayload, clean.recipientUserId]
       );
       if (inserted.rows[0]) return { message: publicMessage(inserted.rows[0]), duplicate: false };
 
@@ -68,33 +69,36 @@ export function createPostgresMessageStore({ connectionString, queryable } = {})
         [clean.provider, clean.externalId]
       );
       if (!existing.rows[0]) throw new MessageStorageError("Unable to resolve an existing message");
+      assertSameMessageRecipient(existing.rows[0].recipient_user_id, clean.recipientUserId);
       return { message: publicMessage(existing.rows[0]), duplicate: true };
     },
-    async listWebhookMessages({ status = "all", limit = 100 } = {}) {
+    async listWebhookMessages({ userId, status = "all", limit = 100 } = {}) {
+      const recipient = messageRecipientId(userId);
       const cleanLimit = Math.min(200, Math.max(1, Number.parseInt(String(limit), 10) || 100));
       const result = await query([
         "WITH inbox AS (",
         "  SELECT * FROM monitor_trace.webhook_messages",
-        "  WHERE ($1::boolean = false OR read_at IS NULL)",
-        "  ORDER BY created_at DESC, id DESC LIMIT $2",
+        "  WHERE recipient_user_id = $1 AND ($2::boolean = false OR read_at IS NULL)",
+        "  ORDER BY created_at DESC, id DESC LIMIT $3",
         ")",
         "SELECT COALESCE(jsonb_agg(to_jsonb(inbox) ORDER BY created_at DESC, id DESC), '[]'::jsonb) AS messages,",
-        "  (SELECT count(*)::integer FROM monitor_trace.webhook_messages WHERE read_at IS NULL) AS unread_count",
+        "  (SELECT count(*)::integer FROM monitor_trace.webhook_messages WHERE recipient_user_id = $1 AND read_at IS NULL) AS unread_count",
         "FROM inbox",
-      ].join("\n"), [status === "unread", cleanLimit]);
+      ].join("\n"), [recipient, status === "unread", cleanLimit]);
       const payload = result.rows[0];
       if (!Array.isArray(payload?.messages) || !Number.isInteger(payload.unread_count)) {
         throw new MessageStorageError("Message storage returned an invalid response");
       }
       return { messages: payload.messages.map(publicMessage), unreadCount: payload.unread_count };
     },
-    async markWebhookMessageRead(id) {
+    async markWebhookMessageRead(id, userId) {
+      const recipient = messageRecipientId(userId);
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id || ""))) {
         throw new MessageStorageError("Message not found", 404);
       }
       const result = await query(
-        "UPDATE monitor_trace.webhook_messages SET read_at = COALESCE(read_at, now()) WHERE id = $1 RETURNING *",
-        [id]
+        "UPDATE monitor_trace.webhook_messages SET read_at = COALESCE(read_at, now()) WHERE id = $1 AND recipient_user_id = $2 RETURNING *",
+        [id, recipient]
       );
       if (!result.rows[0]) throw new MessageStorageError("Message not found", 404);
       return publicMessage(result.rows[0]);
@@ -115,7 +119,7 @@ export function createMessageStore({ connectionString, localStore = authStore, r
   return {
     async createWebhookMessage(input) { return backend().createWebhookMessage(input); },
     async listWebhookMessages(options) { return backend().listWebhookMessages(options); },
-    async markWebhookMessageRead(id) { return backend().markWebhookMessageRead(id); },
+    async markWebhookMessageRead(id, userId) { return backend().markWebhookMessageRead(id, userId); },
   };
 }
 

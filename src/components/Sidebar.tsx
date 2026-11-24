@@ -85,6 +85,10 @@ export default function Sidebar() {
             </Link>
           );
         })}
+        <Link href="/client-messages" className="nav-link" style={{ padding: "0.65rem 0.875rem", fontSize: "0.9rem", borderRadius: "var(--radius-sm)", color: pathname === "/client-messages" ? "var(--accent-primary)" : "var(--text-secondary)", background: pathname === "/client-messages" ? "var(--accent-glow)" : "transparent" }}>
+          <span style={{ marginRight: "0.75rem" }}>▤</span>
+          {locale === "zh" ? "客户端弹窗" : "In-app Messages"}
+        </Link>
       </nav>
 
       {/* Spacer */}

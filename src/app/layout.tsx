@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import AmplitudeWebExperiment from "@/components/AmplitudeWebExperiment";
+import ThinkingDataContentUI from "@/components/ThinkingDataContentUI";
 import { AppProvider } from "@/context/AppContext";
 
 const criticalStyles = `
@@ -148,6 +149,7 @@ export default function RootLayout({
         <AppProvider>
           {children}
         </AppProvider>
+        <ThinkingDataContentUI />
         <AmplitudeWebExperiment />
       </body>
     </html>

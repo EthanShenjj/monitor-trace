@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { MessageRecipientError, resolveMarketLoopRecipient } from "./messageRecipients.mjs";
 
 const MAX_BODY_BYTES = 64_000;
 
@@ -68,8 +69,9 @@ function buildMessageInput(payload, idempotencyKey) {
   };
 }
 
-export async function handleMarketLoopWebhookRequest(request, { createWebhookMessage, secret = "" }) {
-  if (secret) {
+export async function handleMarketLoopWebhookRequest(request, { createWebhookMessage, secret = "", recipients }) {
+  if (!secret) return json({ error: "MarketLoop webhook authentication is not configured" }, 503);
+  {
     const bearerToken = request.headers.get("authorization")?.match(/^Bearer (.+)$/i)?.[1];
     if (
       !matchesSecret(bearerToken, secret) &&
@@ -99,8 +101,12 @@ export async function handleMarketLoopWebhookRequest(request, { createWebhookMes
   let input;
   try {
     input = buildMessageInput(payload, request.headers.get("idempotency-key"));
+    const accountId = payload.type === "marketloop.webhook.test"
+      ? payload.data.recipientAccountId
+      : payload.data.customerId;
+    input.recipientUserId = resolveMarketLoopRecipient(accountId, recipients);
   } catch (error) {
-    return json({ error: error.message }, 400);
+    return json({ error: error.message }, error instanceof MessageRecipientError ? error.status : 400);
   }
 
   try {
@@ -111,7 +117,8 @@ export async function handleMarketLoopWebhookRequest(request, { createWebhookMes
       message_id: message.id,
       duplicate,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof MessageRecipientError) return json({ error: error.message }, error.status);
     // MarketLoop treats any 2xx response as accepted; acknowledge only stored messages.
     return json({ error: "Unable to store MarketLoop message" }, 503);
   }

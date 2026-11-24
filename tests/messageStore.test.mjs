@@ -10,6 +10,7 @@ import { createAuthStore } from "../src/lib/authStore.mjs";
 import { createMessageStore, createPostgresMessageStore } from "../src/lib/messageStore.mjs";
 
 const input = {
+  recipientUserId: "recipient-a",
   provider: "monitor_trace_test",
   externalId: "message-test-1",
   eventType: "marketloop.webhook.test",
@@ -23,7 +24,7 @@ test("message inserts bind values and preserve the existing public message shape
   const store = createPostgresMessageStore({ queryable: {
     async query(text, values) {
       calls.push({ text, values });
-      return { rows: [{ id: values[0], provider: values[1], external_id: values[2], event_type: values[3], title: values[4], body: values[5], raw_payload: JSON.parse(values[6]), read_at: null, created_at: new Date("2026-11-19T08:00:00Z") }] };
+      return { rows: [{ id: values[0], provider: values[1], external_id: values[2], event_type: values[3], title: values[4], body: values[5], raw_payload: JSON.parse(values[6]), recipient_user_id: values[7], read_at: null, created_at: new Date("2026-11-19T08:00:00Z") }] };
     },
   } });
   const result = await store.createWebhookMessage({ ...input, body: "user's text; DROP TABLE users;" });
@@ -54,7 +55,7 @@ test("local development still supports the existing SQLite store", async () => {
     const localStore = createAuthStore({ dbPath: path.join(dir, "messages.sqlite"), sessionSecret: "message-store-local-test-secret" });
     const store = createMessageStore({ localStore });
     const result = await store.createWebhookMessage(input);
-    assert.equal((await store.listWebhookMessages()).messages[0].id, result.message.id);
+    assert.equal((await store.listWebhookMessages({ userId: "recipient-a" })).messages[0].id, result.message.id);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -64,13 +65,13 @@ test("PostgreSQL failures are errors and never leak connection credentials", asy
   const store = createPostgresMessageStore({ queryable: {
     async query() { throw new Error("password=private-database-password"); },
   } });
-  await assert.rejects(store.listWebhookMessages(), error => error.status === 503 && !error.message.includes("private-database-password"));
+  await assert.rejects(store.listWebhookMessages({ userId: "recipient-a" }), error => error.status === 503 && !error.message.includes("private-database-password"));
 });
 
 test("invalid message IDs return not-found without querying PostgreSQL", async () => {
   let calls = 0;
   const store = createPostgresMessageStore({ queryable: { async query() { calls += 1; } } });
-  await assert.rejects(store.markWebhookMessageRead("invalid-id"), error => error.status === 404);
+  await assert.rejects(store.markWebhookMessageRead("invalid-id", "recipient-a"), error => error.status === 404);
   assert.equal(calls, 0);
 });
 
@@ -93,13 +94,13 @@ test("independent PostgreSQL clients share messages, concurrent deduplication, a
   assert.equal(results.filter(result => result.duplicate).length, 1);
   assert.equal(results[0].message.id, results[1].message.id);
 
-  const inbox = await second.listWebhookMessages({ status: "unread", limit: 200 });
+  const inbox = await second.listWebhookMessages({ userId: "recipient-a", status: "unread", limit: 200 });
   assert.ok(inbox.messages.some(item => item.id === results[0].message.id));
   assert.ok(inbox.unreadCount >= 1);
-  const marked = await second.markWebhookMessageRead(results[0].message.id);
+  const marked = await second.markWebhookMessageRead(results[0].message.id, "recipient-a");
   assert.ok(marked.readAt);
-  assert.equal((await first.listWebhookMessages({ status: "unread", limit: 200 })).messages.some(item => item.id === marked.id), false);
-  assert.equal((await first.markWebhookMessageRead(marked.id)).readAt, marked.readAt);
+  assert.equal((await first.listWebhookMessages({ userId: "recipient-a", status: "unread", limit: 200 })).messages.some(item => item.id === marked.id), false);
+  assert.equal((await first.markWebhookMessageRead(marked.id, "recipient-a")).readAt, marked.readAt);
 
   const freshPool = new pg.Pool({ connectionString, max: 1, connectionTimeoutMillis: 8000 });
   try {

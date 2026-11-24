@@ -5,7 +5,14 @@ import path from "node:path";
 import test from "node:test";
 
 import { createAuthStore } from "../src/lib/authStore.mjs";
-import { handleMarketLoopWebhookRequest } from "../src/lib/marketloopWebhook.mjs";
+import { handleMarketLoopWebhookRequest as handleRequest } from "../src/lib/marketloopWebhook.mjs";
+
+const secret = "receiver-secret-example";
+const recipientUserId = "monitor-admin-id";
+const recipients = { "customer-example": recipientUserId, "admin-account": recipientUserId };
+function handleMarketLoopWebhookRequest(request, options = {}) {
+  return handleRequest(request, { secret, recipients, ...options });
+}
 
 const delivery = {
   id: "decision-example:webhook",
@@ -26,13 +33,13 @@ const channelTest = {
   type: "marketloop.webhook.test",
   channelId: "channel-example",
   timestamp: "2026-11-19T08:00:00.000Z",
-  data: { message: "MarketLoop Webhook 测试请求" },
+  data: { message: "MarketLoop Webhook 测试请求", recipientAccountId: "admin-account" },
 };
 
 function request(payload, headers = {}) {
   return new Request("https://monitor-trace.example/api/webhooks/marketloop", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}`, ...headers },
     body: JSON.stringify(payload),
   });
 }
@@ -63,7 +70,7 @@ test("MarketLoop deliveries retain content and original payload in the message c
     assert.equal(result.event_id, delivery.id);
     assert.equal(result.duplicate, false);
 
-    const { messages, unreadCount } = await store.listWebhookMessages();
+    const { messages, unreadCount } = await store.listWebhookMessages({ userId: recipientUserId });
     assert.equal(messages.length, 1);
     assert.equal(unreadCount, 1);
     assert.equal(result.message_id, messages[0].id);
@@ -79,7 +86,7 @@ test("MarketLoop channel tests work without a workspace or customer", async () =
   await withStore(async (store) => {
     const response = await handleMarketLoopWebhookRequest(request(channelTest), store);
     assert.equal(response.status, 200);
-    const { messages } = await store.listWebhookMessages();
+    const { messages } = await store.listWebhookMessages({ userId: recipientUserId });
     assert.equal(messages[0].eventType, "marketloop.webhook.test");
     assert.equal(messages[0].body, channelTest.data.message);
     assert.deepEqual(messages[0].rawPayload, channelTest);
@@ -96,7 +103,7 @@ test("repeated MarketLoop event IDs acknowledge the original stored message", as
     const result = await repeated.json();
     assert.equal(result.duplicate, true);
     assert.equal(result.message_id, first.message_id);
-    assert.equal((await store.listWebhookMessages()).messages.length, 1);
+    assert.equal((await store.listWebhookMessages({ userId: recipientUserId })).messages.length, 1);
   });
 });
 
@@ -104,7 +111,7 @@ test("MarketLoop receiver accepts either configured authentication Header", asyn
   const secret = "receiver-secret-example";
   for (const headers of [
     { Authorization: `Bearer ${secret}` },
-    { "X-Webhook-Secret": secret },
+    { Authorization: "", "X-Webhook-Secret": secret },
   ]) {
     const response = await handleMarketLoopWebhookRequest(request(channelTest, headers), {
       secret,
@@ -117,7 +124,7 @@ test("MarketLoop receiver accepts either configured authentication Header", asyn
 });
 
 test("missing or incorrect credentials cannot store a message", async () => {
-  for (const headers of [{}, { Authorization: "Bearer incorrect" }, { "X-Webhook-Secret": "incorrect" }]) {
+  for (const headers of [{ Authorization: "" }, { Authorization: "Bearer incorrect" }, { Authorization: "", "X-Webhook-Secret": "incorrect" }]) {
     let stored = false;
     const response = await handleMarketLoopWebhookRequest(request(channelTest, headers), {
       secret: "receiver-secret-example",
@@ -156,7 +163,7 @@ test("invalid MarketLoop payloads and mismatched idempotency keys cannot store m
 
 test("malformed JSON and oversized UTF-8 bodies are rejected before storage", async () => {
   const malformed = new Request("https://monitor-trace.example/api/webhooks/marketloop", {
-    method: "POST", body: "{invalid",
+    method: "POST", headers: { Authorization: `Bearer ${secret}` }, body: "{invalid",
   });
   const oversized = request({ ...delivery, data: { ...delivery.data, body: "中".repeat(22_000) } });
   for (const [input, status] of [[malformed, 400], [oversized, 413]]) {

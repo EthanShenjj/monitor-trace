@@ -73,6 +73,13 @@ export default function Dashboard() {
         });
         const payload = await response.json().catch(() => null);
 
+        if (response.status === 401) {
+          if (isActive) {
+            setUser(null);
+          }
+          return;
+        }
+
         if (!response.ok) {
           throw new Error(payload?.error || 'Unable to load user');
         }
@@ -306,7 +313,7 @@ export default function Dashboard() {
               {locale === 'zh' ? '当前用户' : 'Current User'}
             </p>
             <h2 style={{ fontSize: '1.1rem', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {isLoadingUser ? (locale === 'zh' ? '加载中' : 'Loading') : user?.name || '-'}
+              {isLoadingUser ? (locale === 'zh' ? '加载中' : 'Loading') : user?.name || (locale === 'zh' ? '访客' : 'Guest')}
             </h2>
           </div>
         </div>
